@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.Menu?>
+<?import javafx.scene.control.MenuBar?>
+<?import javafx.scene.control.MenuItem?>
+<?import javafx.scene.control.SeparatorMenuItem?>
+<?import javafx.scene.control.SplitPane?>
+<?import javafx.scene.control.TextArea?>
+<?import javafx.scene.control.TitledPane?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.VBox?>
+
+<BorderPane maxHeight="-Infinity" maxWidth="-Infinity" minHeight="-Infinity" minWidth="-Infinity" prefHeight="800.0" prefWidth="1280.0" xmlns="http://javafx.com/javafx/23.0.1" xmlns:fx="http://javafx.com/fxml/1" fx:controller="cn.study.compilerclass.controller.CompilerController">
+  <top>
+    <MenuBar prefHeight="0.0" prefWidth="900.0" BorderPane.alignment="CENTER">
+      <menus>
+        <Menu mnemonicParsing="false" text="文件">
+          <items>
+            <MenuItem mnemonicParsing="false" onAction="#handleNew" text="新建" />
+            <MenuItem mnemonicParsing="false" onAction="#handleOpen" text="打开..." />
+                  <SeparatorMenuItem mnemonicParsing="false" />
+            <MenuItem mnemonicParsing="false" onAction="#handleSave" text="保存" />
+            <MenuItem mnemonicParsing="false" onAction="#handleSaveAs" text="另存为..." />
+                  <SeparatorMenuItem mnemonicParsing="false" />
+            <MenuItem mnemonicParsing="false" onAction="#handleClose" text="关闭" />
+          </items>
+        </Menu>
+        <Menu fx:id="editMenu" mnemonicParsing="false" text="编辑">
+          <items>
+            <MenuItem mnemonicParsing="false" text="撤销" />
+                  <MenuItem mnemonicParsing="false" text="重做" />
+                  <SeparatorMenuItem mnemonicParsing="false" />
+                  <MenuItem mnemonicParsing="false" text="剪切" />
+                  <MenuItem mnemonicParsing="false" text="复制" />
+                  <MenuItem mnemonicParsing="false" text="粘贴" />
+                  <MenuItem mnemonicParsing="false" text="删除" />
+                  <SeparatorMenuItem mnemonicParsing="false" />
+                  <MenuItem mnemonicParsing="false" text="全选" />
+          </items>
+        </Menu>
+            <Menu mnemonicParsing="false" text="工具">
+              <items>
+                <MenuItem mnemonicParsing="false" onAction="#handleLexicalAnalysis" text="词法分析" />
+              </items>
+            </Menu>
+        <Menu mnemonicParsing="false" text="帮助">
+          <items>
+            <MenuItem mnemonicParsing="false" text="关于" />
+          </items>
+        </Menu>
+      </menus>
+    </MenuBar>
+  </top>
+   <center>
+      <SplitPane dividerPositions="0.5" prefHeight="160.0" prefWidth="200.0" BorderPane.alignment="CENTER">
+        <items>
+            <VBox prefHeight="200.0" prefWidth="100.0">
+               <children>
+                  <Label alignment="CENTER" contentDisplay="CENTER" maxWidth="1.7976931348623157E308" text="源程序" textAlignment="CENTER">
+                  </Label>
+                 <HBox VBox.vgrow="ALWAYS">
+                   <children>
+                     <TextArea fx:id="lineNumbersCode" editable="false" focusTraversable="false" prefWidth="40" styleClass="line-number" />
+                     <TextArea fx:id="codeArea" styleClass="code-area" HBox.hgrow="ALWAYS" />
+                   </children>
+                 </HBox>
+               </children>
+            </VBox>
+            <VBox prefHeight="200.0" prefWidth="100.0">
+               <children>
+                  <Label alignment="CENTER" contentDisplay="CENTER" maxWidth="1.7976931348623157E308" text="结果" textAlignment="CENTER">
+                  </Label>
+                 <HBox VBox.vgrow="ALWAYS">
+                   <children>
+                     <TextArea fx:id="lineNumbersResult" editable="false" focusTraversable="false" prefWidth="40" styleClass="line-number" />
+                     <TextArea fx:id="resultArea" editable="false" styleClass="result-area" HBox.hgrow="ALWAYS" />
+                   </children>
+                 </HBox>
+              <TitledPane contentDisplay="CENTER" expanded="false" graphicTextGap="2.0" text="输出">
+                <content>
+                  <TextArea fx:id="outArea" editable="false" />
+                </content>
+              </TitledPane>
+               </children>
+            </VBox>
+        </items>
+      </SplitPane>
+   </center>
+   <bottom>
+        <HBox fx:id="bottomStatusBar" prefHeight="30.0" BorderPane.alignment="CENTER" />
+    </bottom>
+</BorderPane>

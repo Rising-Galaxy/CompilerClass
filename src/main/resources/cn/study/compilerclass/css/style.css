@@ -1,0 +1,76 @@
+@font-face {
+  font-family: 'Maple Mono Normal NF CN';
+  src: url('../font/MapleMonoNormal-NF-CN-Regular.ttf');
+}
+
+.line-number {
+  -fx-background-color: #424659;
+  -fx-text-fill: #666;
+  -fx-font-family: 'Maple Mono Normal NF CN';
+  -fx-font-size: 16px;
+  -fx-background-radius: 10px 0 0 10px!important;
+}
+
+.line-number .scroll-pane {
+  -fx-hbar-policy: never;
+  -fx-vbar-policy: never;
+}
+
+.code-area, .result-area {
+  -fx-background-radius: 0 10px 10px 0!important;
+}
+
+.root {
+  -fx-font-family: 'Maple Mono Normal NF CN', 'JetBrains Mono', monospace;
+  -fx-font-size: 16px;
+}
+
+.text-area .content {
+  -fx-background-color: #424659; /* 保持与主题一致 */
+  -fx-text-fill: #f8f8f2;
+  -fx-padding: 15px;
+}
+
+/* 菜单栏悬浮效果 */
+.menu-bar > .container > .menu-button:hover {
+  -fx-background-color: #3d3f4a;
+}
+
+/* 标签页样式 */
+.tab-pane {
+  -fx-tab-min-width: 120px;
+}
+
+.tab:selected {
+  -fx-background-color: -color-bg-default;
+  -fx-border-color: -color-accent-emphasis;
+}
+
+.tab-label {
+  -fx-font-size: 13px;
+  -fx-padding: 0 10px;
+}
+
+/* 全局文本选择样式 */
+.text {
+  -fx-highlight-fill: #3390ff; /* 选中背景色 - 亮蓝色 */
+  -fx-highlight-text-fill: white; /* 选中文本颜色 - 白色 */
+}
+
+/* 代码区域选择样式 */
+.code-area {
+  -fx-highlight-fill: #3390ff;
+  -fx-highlight-text-fill: white;
+}
+
+/* 文本区域选择样式 */
+.text-area {
+  -fx-highlight-fill: #3390ff;
+  -fx-highlight-text-fill: white;
+}
+
+/* 文本输入框选择样式 */
+.text-field {
+  -fx-highlight-fill: #3390ff;
+  -fx-highlight-text-fill: white;
+}
