@@ -18,12 +18,12 @@ import java.util.Map;
 public class TokenManager {
 
   // Token类型范围常量定义
-  private static final int KEYWORD_START = 1;
-  private static final int KEYWORD_END = 14;
-  private static final int OPERATOR_START = 20;
-  private static final int OPERATOR_END = 39;
-  private static final int DELIMITER_START = 40;
-  private static final int DELIMITER_END = 43;
+  private static int KEYWORD_START;
+  private static int KEYWORD_END;
+  private static int OPERATOR_START;
+  private static int OPERATOR_END;
+  private static int DELIMITER_START;
+  private static int DELIMITER_END;
 
   private final Map<String, Integer> tokenTypes;
   private final Gson gson;
@@ -40,11 +40,11 @@ public class TokenManager {
       // 使用 Gson 解析 JSON 文件
       JsonObject root = gson.fromJson(reader, JsonObject.class);
 
-      // 加载关键字、操作符、分隔符和特殊类型的定义
-      loadTokenGroup(root.getAsJsonObject("keywords"));     // 关键字类型
-      loadTokenGroup(root.getAsJsonObject("operators"));    // 操作符类型
-      loadTokenGroup(root.getAsJsonObject("delimiters"));   // 分隔符类型
-      loadTokenGroup(root.getAsJsonObject("special"));      // 特殊类型
+      // 加载关键字、操作符、分隔符和特殊类型的定义和范围
+      loadTokenGroup(root.getAsJsonObject("keywords"), "keywords"); // 关键字类型
+      loadTokenGroup(root.getAsJsonObject("operators"), "operators"); // 操作符类型
+      loadTokenGroup(root.getAsJsonObject("delimiters"), "delimiters"); // 分隔符类型
+      loadTokenGroup(root.getAsJsonObject("special"), "special"); // 特殊类型
 
       // 记录加载成功的 token 类型数量
       log.info("成功加载 {} 个 token 类型定义", tokenTypes.size());
@@ -70,16 +70,44 @@ public class TokenManager {
     return new InputStreamReader(inputStream);
   }
 
-  private void loadTokenGroup(JsonObject group) {
+  private void loadTokenGroup(JsonObject group, String groupType) {
     if (group != null) {
+      int min = Integer.MAX_VALUE;
+      int max = Integer.MIN_VALUE;
+
       for (Map.Entry<String, JsonElement> entry : group.entrySet()) {
-        tokenTypes.put(entry.getKey(), entry.getValue().getAsInt());
+        int value = entry.getValue().getAsInt();
+        tokenTypes.put(entry.getKey(), value);
+
+        // 动态计算极值
+        if (value < min) {
+          min = value;
+        }
+        if (value > max) {
+          max = value;
+        }
+      }
+
+      // 按分组类型设置范围
+      switch (groupType) {
+        case "keywords":
+          KEYWORD_START = min;
+          KEYWORD_END = max;
+          break;
+        case "operators":
+          OPERATOR_START = min;
+          OPERATOR_END = max;
+          break;
+        case "delimiters":
+          DELIMITER_START = min;
+          DELIMITER_END = max;
+          break;
       }
     }
   }
 
   public int getType(String token) {
-    return tokenTypes.getOrDefault(token, -1);
+    return tokenTypes.getOrDefault(token, 65);
   }
 
   public boolean isKeyword(String token) {

@@ -74,3 +74,24 @@
   -fx-highlight-fill: #3390ff;
   -fx-highlight-text-fill: white;
 }
+
+.result-table {
+  -fx-background-color: -color-bg-default;
+  -fx-border-color: -color-border-default;
+  -fx-border-width: 1px;
+  -fx-border-radius: 10px;
+  -fx-background-radius: 10px;
+  -fx-text-fill: -color-text-default;
+  -fx-alignment: CENTER;
+  -fx-cell-size: 30px;
+  -fx-cell-hover-color: -color-bg-emphasis;
+  -fx-cell-selected-color: -color-bg-emphasis;
+  -fx-cell-hover-text-color: -color-text-emphasis;
+  -fx-cell-selected-text-color: -color-text-emphasis;
+  -fx-cell-hover-background-color: -color-bg-emphasis;
+  -fx-cell-selected-background-color: -color-bg-emphasis;
+  -fx-cell-hover-background-text-color: -color-text-emphasis;
+  -fx-cell-selected-background-text-color: -color-text-emphasis;
+  -fx-cell-hover-background-text-fill: -color-text-emphasis;
+  -fx-cell-selected-background-text-fill: -color-text-emphasis;
+}

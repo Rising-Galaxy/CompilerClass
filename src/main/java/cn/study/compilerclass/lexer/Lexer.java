@@ -1,11 +1,14 @@
 package cn.study.compilerclass.lexer;
 
+import cn.study.compilerclass.utils.OutInfo;
 import java.util.ArrayList;
 import java.util.List;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * 词法分析器，负责将源代码解析成token序列
  */
+@Slf4j
 public class Lexer {
 
   private final String sourceCode;
@@ -14,14 +17,33 @@ public class Lexer {
   private int currentLine;
   private int currentColumn;
   private char currentChar;
+  private OutInfo outInfos;
+  private final String src = "词法分析";
 
-  public Lexer(String sourceCode) {
+  public Lexer(String sourceCode, OutInfo outInfos) {
     this.sourceCode = sourceCode;
     this.tokenManager = new TokenManager();
     this.currentPos = 0;
     this.currentLine = 1;
     this.currentColumn = 0;
+    this.outInfos = outInfos;
     moveNext();
+  }
+
+  private void error(String msg, Exception e) {
+    outInfos.error(src, msg, e);
+  }
+
+  private void error(String msg) {
+    outInfos.error(src, msg);
+  }
+
+  private void warn(String msg) {
+    outInfos.warn(src, msg);
+  }
+
+  private void info(String msg) {
+    outInfos.info(src, msg);
   }
 
   private void moveNext() {
@@ -58,8 +80,8 @@ public class Lexer {
         moveNext();
         while (true) {
           if (currentChar == '\0') {
-            // 如果文件结束但未找到多行注释的闭合符号，则抛出异常
-            throw new RuntimeException("多行注释未正确闭合，可能缺少 '*/'");
+            // 如果文件结束但未找到多行注释的闭合符号
+            error(String.format("多行注释未正确闭合，可能缺少 '*/'-[r: %d, c: %d]", currentLine, currentColumn));
           }
           if (currentChar == '*') {
             moveNext();
@@ -76,48 +98,51 @@ public class Lexer {
   }
 
   private Token scanNumber() {
-    StringBuilder sb = new StringBuilder();
+    StringBuilder sb = new StringBuilder(16);  // 预设合理初始容量，以减少扩容次数
     int startColumn = currentColumn;
     boolean isFloat = false;
 
     // 识别整数和浮点数
     while (Character.isDigit(currentChar) || currentChar == '.') {
       if (currentChar == '.') {
-        if (isFloat) {
-          throw new RuntimeException(String.format("非法的浮点数格式，行 %d 列 %d", currentLine, currentColumn));
+        if (isFloat) { // 不能出现多个小数点
+          error(String.format("非法的浮点数格式-[r: %d, c: %d]", currentLine, currentColumn));
         }
-        // 检查后续是否有数字，确保小数点后有有效数字
-        if (!Character.isDigit(peekNextChar())) {
-          break;
+        // 立即检查后续字符是否为数字
+        char nextChar = peekNextChar();
+        if (!Character.isDigit(nextChar)) {
+          error(String.format("小数点后缺少有效数字-[r: %d, c: %d]", currentLine, currentColumn));
         }
-        isFloat = true; // 标记为浮点数
+        isFloat = true;
       }
-      sb.append(currentChar); // 将当前字符加入结果
-      moveNext(); // 移动到下一个字符
+      sb.append(currentChar);
+      moveNext();
     }
 
     // 处理科学计数法
     if (currentChar == 'e' || currentChar == 'E') {
-      sb.append(currentChar); // 添加科学计数法的标志符 'e' 或 'E'
+      sb.append(currentChar);
       moveNext();
 
-      // 处理正负号
       if (currentChar == '+' || currentChar == '-') {
-        sb.append(currentChar); // 添加正负号
+        sb.append(currentChar);
         moveNext();
       }
 
-      // 确保科学计数法后跟随有效数字
+      // 必须包含至少一个数字
+      if (!Character.isDigit(currentChar)) {
+        error(String.format("科学计数法缺少有效数字-[r: %d, c: %d]", currentLine, currentColumn));
+      }
       while (Character.isDigit(currentChar)) {
         sb.append(currentChar);
         moveNext();
       }
-      isFloat = true; // 科学计数法属于浮点数
+      isFloat = true;
     }
 
     String value = sb.toString();
-    int type = isFloat ? tokenManager.getType("float") : tokenManager.getType("integer");
-    return new Token(value, type, currentLine, startColumn);
+    int type = isFloat ? tokenManager.getType("_FLOAT_") : tokenManager.getType("_INTEGER_");
+    return Token.builder().value(value).type(type).line(currentLine).column(startColumn).build();
   }
 
   /**
@@ -149,33 +174,33 @@ public class Lexer {
     if (tokenManager.isKeyword(value)) {
       type = tokenManager.getType(value);
     } else {
-      type = tokenManager.getType("identifier");
+      type = tokenManager.getType("_IDENTIFIER_");
     }
 
-    return new Token(value, type, currentLine, startColumn);
+    return Token.builder().value(value).type(type).line(currentLine).column(startColumn).build();
   }
 
-  private Token scanOperator() {
+  private Token scanOperatorAndOther() {
     StringBuilder sb = new StringBuilder();
     int startColumn = currentColumn;
 
     // 处理可能的双字符运算符
     sb.append(currentChar);
-    char nextChar = currentPos < sourceCode.length() ? sourceCode.charAt(currentPos) : '\0';
-    moveNext();
 
-    if ((sb.charAt(0) == '=' && nextChar == '=') || (sb.charAt(0) == '!' && nextChar == '=') || (sb.charAt(0) == '<' && nextChar == '=') || (sb.charAt(0) == '>' && nextChar == '=')) {
-      sb.append(nextChar);
-      moveNext();
-    }
-
+    sb.append(peekNextChar());
     String value = sb.toString();
     int type = tokenManager.getType(value);
-    if (type == -1) {
-      throw new RuntimeException(String.format("未知的运算符'%s'，行%d列%d", value, currentLine, startColumn));
+    moveNext();
+    if (type != -1){
+      moveNext();
+    } else {
+      value = sb.toString();
+      type = tokenManager.getType(value);
+      if (type == -1) {
+        error(String.format("非法运算符'%s'-[r: %d, c: %d]", value, currentLine, startColumn));
+      }
     }
-
-    return new Token(value, type, currentLine, startColumn);
+    return Token.builder().value(value).type(type).line(currentLine).column(startColumn).build();
   }
 
   private Token scanString() {
@@ -192,8 +217,15 @@ public class Lexer {
           case 'r' -> sb.append('\r');
           case '\\' -> sb.append('\\');
           case '"' -> sb.append('"');
-          default ->
-              throw new RuntimeException(String.format("非法的转义字符'%c'，行%d列%d", currentChar, currentLine, currentColumn));
+          case '\'' -> {
+            sb.append('\'');
+            warn(String.format("不必要的转义字符'%c'-[r: %d, c: %d]", currentChar, currentLine, currentColumn));
+          }
+          case '0' -> sb.append('\0');
+          default -> {
+            error(String.format("非法的转义字符'%c'-[r: %d, c: %d]", currentChar, currentLine, currentColumn));
+            sb.append(currentChar);
+          }
         }
       } else {
         sb.append(currentChar);
@@ -202,11 +234,16 @@ public class Lexer {
     }
 
     if (currentChar == '\0') {
-      throw new RuntimeException(String.format("未闭合的字符串，行%d列%d", currentLine, startColumn));
+      error(String.format("未闭合的字符串-[r: %d, c: %d]", currentLine, startColumn));
     }
 
     moveNext(); // 跳过结束的引号
-    return new Token(sb.toString(), tokenManager.getType("string"), currentLine, startColumn);
+    return Token.builder()
+                .value(sb.toString())
+                .type(tokenManager.getType("string"))
+                .line(currentLine)
+                .column(startColumn)
+                .build();
   }
 
   private Token scanChar() {
@@ -216,15 +253,23 @@ public class Lexer {
     char value;
     if (currentChar == '\\') {
       moveNext();
-      value = switch (currentChar) {
-        case 'n' -> '\n';
-        case 't' -> '\t';
-        case 'r' -> '\r';
-        case '\\' -> '\\';
-        case '\'' -> '\'';
-        default ->
-            throw new RuntimeException(String.format("非法的转义字符'%c'，行%d列%d", currentChar, currentLine, currentColumn));
-      };
+      switch (currentChar) {
+        case 'n' -> value = '\n';
+        case 't' -> value = '\t';
+        case 'r' -> value = '\r';
+        case '\\' -> value = '\\';
+        case '\'' -> value = '\'';
+        case '0' -> value = '\0';
+        case '"' -> {
+          value = '"';
+          warn(String.format("不必要的转义字符'%c'-[r: %d, c: %d]", currentChar, currentLine, currentColumn));
+        }
+        default -> {
+          error(String.format("非法的转义字符'%c'-[r: %d, c: %d]", currentChar, currentLine, currentColumn));
+          value = currentChar;
+        }
+      }
+      ;
       moveNext();
     } else {
       value = currentChar;
@@ -232,54 +277,78 @@ public class Lexer {
     }
 
     if (currentChar != '\'') {
-      throw new RuntimeException(String.format("字符常量必须是单个字符，行%d列%d", currentLine, startColumn));
+      error(String.format("字符常量必须是单个字符-[r: %d, c: %d]", currentLine, startColumn));
     }
 
     moveNext(); // 跳过结束的单引号
-    return new Token(String.valueOf(value), tokenManager.getType("char"), currentLine, startColumn);
+    return Token.builder()
+                .value(String.valueOf(value))
+                .type(tokenManager.getType("Char"))
+                .line(currentLine)
+                .column(startColumn)
+                .build();
   }
 
   public List<Token> analyze() {
     List<Token> tokens = new ArrayList<>();
 
-    while (currentChar != '\0') {
-      skipWhitespace();
-
-      if (currentChar == '\0') {
-        break;
-      }
-
-      Token token;
-      if (Character.isLetter(currentChar) || currentChar == '_') {
-        token = scanIdentifier();
-      } else if (Character.isDigit(currentChar)) {
-        token = scanNumber();
-      } else if (currentChar == '"') {
-        token = scanString();
-      } else if (currentChar == '\'') {
-        token = scanChar();
-      } else if (currentChar == '/') {
-        int startColumn = currentColumn;
-        moveNext();
-        if (currentChar == '/' || currentChar == '*') {
-          currentColumn = startColumn;
-          currentPos--;
-          currentChar = '/';
-          skipComment();
-          continue;
-        } else {
-          currentColumn = startColumn;
-          currentPos--;
-          currentChar = '/';
-          token = scanOperator();
+    try {
+      info("开始分析...");
+      while (currentChar != '\0') {
+        skipWhitespace();
+        if (currentChar == '\0') {
+          break;
         }
-      } else if (tokenManager.isOperator(String.valueOf(currentChar)) || tokenManager.isDelimiter(String.valueOf(currentChar))) {
-        token = scanOperator();
-      } else {
-        throw new RuntimeException(String.format("非法字符'%c'，行%d列%d", currentChar, currentLine, currentColumn));
-      }
 
-      tokens.add(token);
+        Token token;
+        if (Character.isLetter(currentChar) || currentChar == '_') {
+          token = scanIdentifier();
+        } else if (Character.isDigit(currentChar)) {
+          token = scanNumber();
+        } else if (currentChar == '"') {
+          token = scanString();
+        } else if (currentChar == '\'') {
+          token = scanChar();
+        } else if (currentChar == '/') {
+          int startColumn = currentColumn;
+          moveNext();
+          if (currentChar == '/' || currentChar == '*') {
+            currentColumn = startColumn;
+            currentPos--;
+            currentChar = '/';
+            skipComment();
+            continue;
+          } else {
+            currentColumn = startColumn;
+            currentPos--;
+            currentChar = '/';
+            token = scanOperatorAndOther();
+          }
+        } else if (tokenManager.isDelimiter(String.valueOf(currentChar))) {
+          token = Token.builder()
+                       .value(String.valueOf(currentChar))
+                       .type(tokenManager.getType(String.valueOf(currentChar)))
+                       .line(currentLine)
+                       .column(currentColumn)
+                       .build();
+          moveNext();
+        } else if (tokenManager.isOperator(String.valueOf(currentChar))) {
+          token = scanOperatorAndOther();
+        } else {
+          error(String.format("非法字符'%c'-[r: %d, c: %d]", currentChar, currentLine, currentColumn));
+          token = Token.builder()
+                       .value(String.valueOf(currentChar))
+                       .type(tokenManager.getType("_ILLEGAL_"))
+                       .line(currentLine)
+                       .column(currentColumn)
+                       .build();
+          moveNext();
+        }
+        tokens.add(token);
+      }
+      info("分析完成！");
+    } catch (Exception e) {
+      error("分析失败！", e);
     }
 
     return tokens;

@@ -2,18 +2,23 @@ package cn.study.compilerclass.controller;
 
 import cn.study.compilerclass.lexer.Lexer;
 import cn.study.compilerclass.lexer.Token;
+import cn.study.compilerclass.lexer.TokenView;
+import cn.study.compilerclass.utils.OutInfo;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.stream.Collectors;
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
 import javafx.event.ActionEvent;
 import javafx.event.Event;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
+import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyCodeCombination;
 import javafx.scene.input.KeyCombination;
 import javafx.scene.input.KeyEvent;
-import javafx.scene.layout.HBox;
 import javafx.stage.FileChooser;
 import java.io.File;
 import java.io.IOException;
@@ -40,9 +45,19 @@ public class CompilerController {
   @FXML
   private Menu editMenu;
   @FXML
-  private HBox bottomStatusBar;
-
   private Label cursorPositionLabel;
+  @FXML
+  private TitledPane outPane;
+  @FXML
+  private TableView<TokenView> resultTable;
+  @FXML
+  private TableColumn<TokenView, Integer> indexColumn;
+  @FXML
+  private TableColumn<TokenView, String> wordColumn;
+  @FXML
+  private TableColumn<TokenView, Integer> codeColumn;
+  @FXML
+  private TableColumn<TokenView, String> posColumn;
 
   @FXML
   public void initialize() {
@@ -52,10 +67,6 @@ public class CompilerController {
     codeArea.setFocusTraversable(true);
     setupContextMenu(codeArea);
     setupEditMenu();
-
-    // 初始化状态栏标签
-    cursorPositionLabel = new Label("行: 1, 列: 1");
-    bottomStatusBar.getChildren().add(cursorPositionLabel);
 
     // 添加光标位置监听器
     codeArea.caretPositionProperty().addListener((obs, oldPos, newPos) -> updateCursorPositionLabel());
@@ -176,22 +187,34 @@ public class CompilerController {
   private void handleLexicalAnalysis(ActionEvent event) {
     String sourceCode = codeArea.getText();
     if (sourceCode == null || sourceCode.trim().isEmpty()) {
-      resultArea.setText("源代码为空，无法进行词法分析。");
+      outArea.setText("源代码为空，无法进行词法分析。");
+      outPane.setExpanded(true);
       return;
     }
 
-    try {
-      Lexer lexer = new Lexer(sourceCode);
-      List<Token> tokens = lexer.analyze();
+    OutInfo outInfos = new OutInfo();
+    Lexer lexer = new Lexer(sourceCode, outInfos);
+    List<Token> tokens = lexer.analyze();
 
-      StringBuilder result = new StringBuilder();
-      for (Token token : tokens) {
-        result.append(String.format("{%d 行, %d 列} - 类型: %d, 值: %s%n", token.getLine(), token.getColumn(), token.getType(), token.getValue()));
-      }
-      resultArea.setText(result.toString());
-    } catch (Exception e) {
-      log.error("词法分析出错", e);
-      outArea.setText("词法分析出错: " + e.getMessage());
+    // 添加到 表格中
+    indexColumn.setCellValueFactory(new PropertyValueFactory<>("index"));
+    wordColumn.setCellValueFactory(new PropertyValueFactory<>("value"));
+    codeColumn.setCellValueFactory(new PropertyValueFactory<>("type"));
+    posColumn.setCellValueFactory(new PropertyValueFactory<>("pos"));
+    ObservableList<TokenView> tokenViews = tokens.stream()
+                                                  .map(token -> token.toView(tokens.indexOf(token)))
+                                                  .collect(Collectors.toCollection(FXCollections::observableArrayList));
+    resultTable.setItems(tokenViews);
+
+    StringBuilder result = new StringBuilder();
+    for (Token token : tokens) {
+      result.append(String.format("[%d:%d]-{Type: %d, Value: %s}%n", token.getLine(), token.getColumn(), token.getType(), token.getValue()));
+    }
+    resultArea.setText(result.toString());
+    if (!outInfos.isEmpty()) {
+      outArea.setText(outInfos.toString());
+      outPane.setExpanded(true);
+      // TODO 检测到词法分析存在 [ERROR] 级别的错误时就不会执行后续的语法分析等系列操作
     }
   }
 
@@ -315,7 +338,9 @@ public class CompilerController {
 
 
   private boolean saveFile() {
-    if (currentFile == null) return saveAs();
+    if (currentFile == null) {
+      return saveAs();
+    }
 
     try {
       String content = replaceTabs(codeArea.getText()); // 二次验证替换
