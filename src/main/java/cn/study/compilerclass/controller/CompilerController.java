@@ -6,6 +6,7 @@ import cn.study.compilerclass.lexer.TokenView;
 import cn.study.compilerclass.utils.OutInfo;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.prefs.Preferences;
 import java.util.stream.Collectors;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -19,6 +20,8 @@ import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyCodeCombination;
 import javafx.scene.input.KeyCombination;
 import javafx.scene.input.KeyEvent;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
 import java.io.File;
 import java.io.IOException;
@@ -58,6 +61,10 @@ public class CompilerController {
   private TableColumn<TokenView, Integer> codeColumn;
   @FXML
   private TableColumn<TokenView, String> posColumn;
+  @FXML
+  private VBox ResultVBox;
+  @FXML
+  private HBox ResultHBox;
 
   @FXML
   public void initialize() {
@@ -185,12 +192,15 @@ public class CompilerController {
 
   @FXML
   private void handleLexicalAnalysis(ActionEvent event) {
+    ResultVBox.getChildren().remove(ResultHBox);
+
     String sourceCode = codeArea.getText();
     if (sourceCode == null || sourceCode.trim().isEmpty()) {
       outArea.setText("源代码为空，无法进行词法分析。");
       outPane.setExpanded(true);
       return;
     }
+
 
     OutInfo outInfos = new OutInfo();
     Lexer lexer = new Lexer(sourceCode, outInfos);
@@ -206,11 +216,12 @@ public class CompilerController {
                                                   .collect(Collectors.toCollection(FXCollections::observableArrayList));
     resultTable.setItems(tokenViews);
 
-    StringBuilder result = new StringBuilder();
-    for (Token token : tokens) {
-      result.append(String.format("[%d:%d]-{Type: %d, Value: %s}%n", token.getLine(), token.getColumn(), token.getType(), token.getValue()));
-    }
-    resultArea.setText(result.toString());
+    // 初版的输出框-保留以防万一
+    // StringBuilder result = new StringBuilder();
+    // for (Token token : tokens) {
+    //   result.append(String.format("[%d:%d]-{Type: %d, Value: %s}%n", token.getLine(), token.getColumn(), token.getType(), token.getValue()));
+    // }
+    // resultArea.setText(result.toString());
     if (!outInfos.isEmpty()) {
       outArea.setText(outInfos.toString());
       outPane.setExpanded(true);
@@ -372,8 +383,17 @@ public class CompilerController {
     FileChooser chooser = new FileChooser();
     chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Star Files", "*.star"));
 
+    // 获取上次保存的路径
+    Preferences prefs = Preferences.userNodeForPackage(CompilerController.class);
+    String lastPath = prefs.get("lastOpenPath", null);
+    if (lastPath != null) {
+      chooser.setInitialDirectory(new File(lastPath));
+    }
+
     File file = chooser.showOpenDialog(codeArea.getScene().getWindow());
     if (file != null) {
+      // 保存当前路径
+      prefs.put("lastOpenPath", file.getParent());
       loadFile(file);
     }
   }

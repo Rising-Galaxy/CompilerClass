@@ -10,9 +10,10 @@ import lombok.Setter;
 @AllArgsConstructor
 public class TokenView {
 
-  private int index;
+  private Integer index;
   private String value;
-  private int type;
+  private Integer type;
   private String pos;
+  private String meaning;
 
 }

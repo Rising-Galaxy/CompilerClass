@@ -107,7 +107,7 @@ public class TokenManager {
   }
 
   public int getType(String token) {
-    return tokenTypes.getOrDefault(token, 65);
+    return tokenTypes.getOrDefault(token, -1);
   }
 
   public boolean isKeyword(String token) {

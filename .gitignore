@@ -40,3 +40,7 @@ build/
 ### Custom ###
 
 /src/main/java/test/
+/.idea/MarsCodeWorkspaceAppSettings.xml
+/.idea/encodings.xml
+/log/app.log
+/log/app.2025-03-18.log
