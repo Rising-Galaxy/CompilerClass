@@ -44,3 +44,4 @@ build/
 /.idea/encodings.xml
 /log/app.log
 /log/app.2025-03-18.log
+/.lingma/

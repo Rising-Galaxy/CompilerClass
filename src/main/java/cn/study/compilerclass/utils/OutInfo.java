@@ -6,6 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 public class OutInfo {
 
   private final StringBuilder outInfos;
+  private boolean hasError;
 
   private enum OutType {
     ERROR, WARN, INFO
@@ -13,6 +14,11 @@ public class OutInfo {
 
   public OutInfo() {
     outInfos = new StringBuilder();
+    hasError = false;
+  }
+
+  public boolean hasError() {
+    return hasError;
   }
 
   private void add(String src, OutType outType, String msg) {
@@ -20,11 +26,13 @@ public class OutInfo {
   }
 
   public void error(String src, String msg) {
+    hasError = true;
     add(src, OutType.ERROR, msg);
     log.error("[{}]-[{}] {}", src, OutType.ERROR, msg);
   }
 
   public void error(String src, String msg, Exception e) {
+    hasError = true;
     add(src, OutType.ERROR, msg);
     log.error("[{}]-[{}] {}", src, OutType.ERROR, msg, e);
   }

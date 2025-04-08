@@ -15,7 +15,7 @@ public class Lexer {
   private final String sourceCode;
   private final TokenManager tokenManager;
   private final String src = "词法分析";
-  private final ErrorProcess errorProcess = ErrorProcess.SKIP;
+  private ErrorProcess errorProcess = ErrorProcess.SKIP;
   private int currentPos;
   private int currentLine;
   private int currentColumn;
@@ -104,7 +104,9 @@ public class Lexer {
       }
       info("分析完成！");
     } catch (Exception e) {
+      errorProcess = ErrorProcess.SKIP;
       error("分析失败！", e);
+      errorProcess = ErrorProcess.ERROR;
     }
 
     return tokens;
@@ -112,6 +114,9 @@ public class Lexer {
 
   private void error(String msg, Exception e) {
     outInfos.error(src, msg, e);
+    if (errorProcess != ErrorProcess.SKIP) {
+      throw new RuntimeException(msg);
+    }
   }
 
   private void info(String msg) {
@@ -303,6 +308,10 @@ public class Lexer {
   }
 
   private boolean isUnSupportedType() {
+    // 判断是否为文件结束符
+    if (currentChar == '\0') {
+      return false;
+    }
     // 判断是否为空白字符
     if (currentChar == ' ' || currentChar == '\t' || currentChar == '\n' || currentChar == '\r') {
       return false;
@@ -482,7 +491,14 @@ public class Lexer {
       error(String.format("字符常量必须是单个字符-[r: %d, c: %d]", currentLine, startColumn));
     }
 
-    moveNext(); // 跳过结束的单引号
+    while (currentChar != '\'' && currentChar != '\0' && currentChar != '\n' && currentChar != '\r') {
+      moveNext();
+    }
+    if (currentChar != '\'') {
+      error(String.format("未闭合的字符常量-[r: %d, c: %d]", currentLine, startColumn));
+    }
+
+    moveNext(); // 跳过结束的引号
     return Token.builder()
                 .value(String.valueOf(value))
                 .type(tokenManager.getType("_CHAR_"))

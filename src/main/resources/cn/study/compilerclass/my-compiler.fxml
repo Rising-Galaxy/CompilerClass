@@ -11,6 +11,7 @@
 <?import javafx.scene.control.TableView?>
 <?import javafx.scene.control.TextArea?>
 <?import javafx.scene.control.TitledPane?>
+<?import javafx.scene.control.TreeView?>
 <?import javafx.scene.layout.BorderPane?>
 <?import javafx.scene.layout.HBox?>
 <?import javafx.scene.layout.VBox?>
@@ -19,15 +20,15 @@
   <top>
     <MenuBar prefHeight="0.0" prefWidth="900.0" BorderPane.alignment="CENTER">
       <menus>
-        <Menu mnemonicParsing="false" text="文件">
+        <Menu fx:id="fileMenu" mnemonicParsing="false" text="文件">
           <items>
-            <MenuItem mnemonicParsing="false" onAction="#handleNew" text="新建" />
-            <MenuItem mnemonicParsing="false" onAction="#handleOpen" text="打开..." />
+            <MenuItem mnemonicParsing="false" text="新建" />
+            <MenuItem mnemonicParsing="false" text="打开..." />
             <SeparatorMenuItem mnemonicParsing="false" />
-            <MenuItem mnemonicParsing="false" onAction="#handleSave" text="保存" />
-            <MenuItem mnemonicParsing="false" onAction="#handleSaveAs" text="另存为..." />
+            <MenuItem mnemonicParsing="false" text="保存" />
+            <MenuItem mnemonicParsing="false" text="另存为..." />
             <SeparatorMenuItem mnemonicParsing="false" />
-            <MenuItem mnemonicParsing="false" onAction="#handleClose" text="关闭" />
+            <MenuItem mnemonicParsing="false" text="关闭" />
           </items>
         </Menu>
         <Menu fx:id="editMenu" mnemonicParsing="false" text="编辑">
@@ -46,6 +47,7 @@
         <Menu mnemonicParsing="false" text="工具">
           <items>
             <MenuItem mnemonicParsing="false" onAction="#handleLexicalAnalysis" text="词法分析" />
+            <MenuItem mnemonicParsing="false" onAction="#handleSyntaxAnalysis" text="语法分析" />
           </items>
         </Menu>
         <Menu mnemonicParsing="false" text="帮助">
@@ -88,6 +90,7 @@
                       <TableView fx:constant="CONSTRAINED_RESIZE_POLICY" />
                     </columnResizePolicy>
                   </TableView>
+                        <TreeView fx:id="resultTreeView" maxHeight="1.7976931348623157E308" styleClass="result-tree" VBox.vgrow="ALWAYS" />
                   <HBox fx:id="ResultHBox" VBox.vgrow="ALWAYS">
                     <children>
                       <TextArea fx:id="lineNumbersResult" editable="false" focusTraversable="false" prefWidth="40" styleClass="line-number" />

@@ -14,6 +14,6 @@ module cn.study.compilerclass {
 
   opens cn.study.compilerclass.controller to javafx.fxml;
   opens cn.study.compilerclass to javafx.fxml;
-  opens cn.study.compilerclass.lexer to javafx.base;
+  opens cn.study.compilerclass.lexer to javafx.base, com.google.gson;
   exports cn.study.compilerclass;
 }

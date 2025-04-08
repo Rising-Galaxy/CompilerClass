@@ -3,7 +3,10 @@ package cn.study.compilerclass.controller;
 import cn.study.compilerclass.lexer.Lexer;
 import cn.study.compilerclass.lexer.Token;
 import cn.study.compilerclass.lexer.TokenView;
+import cn.study.compilerclass.parser.Parser;
 import cn.study.compilerclass.utils.OutInfo;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.prefs.Preferences;
@@ -14,6 +17,7 @@ import javafx.event.ActionEvent;
 import javafx.event.Event;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
+import javafx.scene.control.Alert.AlertType;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.KeyCode;
@@ -48,6 +52,8 @@ public class CompilerController {
   @FXML
   private Menu editMenu;
   @FXML
+  private Menu fileMenu;
+  @FXML
   private Label cursorPositionLabel;
   @FXML
   private TitledPane outPane;
@@ -65,6 +71,8 @@ public class CompilerController {
   private VBox ResultVBox;
   @FXML
   private HBox ResultHBox;
+  @FXML
+  private TreeView<String> resultTreeView;
 
   @FXML
   public void initialize() {
@@ -74,6 +82,7 @@ public class CompilerController {
     codeArea.setFocusTraversable(true);
     setupContextMenu(codeArea);
     setupEditMenu();
+    setupFileMenu();
 
     // 添加光标位置监听器
     codeArea.caretPositionProperty().addListener((obs, oldPos, newPos) -> updateCursorPositionLabel());
@@ -85,6 +94,28 @@ public class CompilerController {
         codeArea.insertText(codeArea.getCaretPosition(), "  "); // 插入两个空格
       }
     });
+
+    // 初始化结果框
+    ResultVBox.getChildren().clear();
+    ResultVBox.getChildren().add(ResultHBox);
+  }
+
+  @FXML
+  private void handleSyntaxAnalysis(ActionEvent event) {
+    if (currentFile == null || isModified) {
+      showAlert(AlertType.WARNING, "请先保存当前内容，再进行语法分析。");
+      return;
+    }
+    ResultVBox.getChildren().clear();
+    OutInfo outInfo = new OutInfo();
+    Parser parser = new Parser(currentFile.getParent() + File.separator + "lex_tokens.json", outInfo);
+    parser.parse();
+    parser.getTreeView(resultTreeView);
+    ResultVBox.getChildren().add(resultTreeView);
+    if (!outInfo.isEmpty()) {
+      outArea.setText(outInfo.toString());
+      outPane.setExpanded(true);
+    }
   }
 
   // 统一处理制表符替换
@@ -114,6 +145,22 @@ public class CompilerController {
     }
 
     cursorPositionLabel.setText(String.format("行: %d, 列: %d", line, column));
+  }
+
+  // 初始化文件菜单
+  private void setupFileMenu() {
+    List<MenuItem> fileMenuItems = fileMenu.getItems();
+    MenuItem newItem = fileMenuItems.get(0);
+    MenuItem openItem = fileMenuItems.get(1);
+    MenuItem saveItem = fileMenuItems.get(2);
+    MenuItem saveAsItem = fileMenuItems.get(3);
+    MenuItem closeItem = fileMenuItems.get(4);
+
+    bindKeyAndEvent(newItem, KeyCodeCombination.keyCombination("Ctrl+N"), this::handleNew);
+    bindKeyAndEvent(openItem, KeyCodeCombination.keyCombination("Ctrl+O"), this::handleOpen);
+    bindKeyAndEvent(saveItem, KeyCodeCombination.keyCombination("Ctrl+S"), this::handleSave);
+    bindKeyAndEvent(saveAsItem, KeyCodeCombination.keyCombination("Ctrl+Shift+S"), this::handleSaveAs);
+    bindKeyAndEvent(closeItem, KeyCodeCombination.keyCombination("Ctrl+Q"), this::handleClose);
   }
 
   // 初始化编辑菜单
@@ -192,7 +239,12 @@ public class CompilerController {
 
   @FXML
   private void handleLexicalAnalysis(ActionEvent event) {
-    ResultVBox.getChildren().remove(ResultHBox);
+    if (currentFile == null || isModified) {
+      showAlert(AlertType.WARNING, "请先保存当前内容，再进行词法分析。");
+      return;
+    }
+    ResultVBox.getChildren().clear();
+    ResultVBox.getChildren().add(resultTable);
 
     String sourceCode = codeArea.getText();
     if (sourceCode == null || sourceCode.trim().isEmpty()) {
@@ -200,7 +252,6 @@ public class CompilerController {
       outPane.setExpanded(true);
       return;
     }
-
 
     OutInfo outInfos = new OutInfo();
     Lexer lexer = new Lexer(sourceCode, outInfos);
@@ -212,8 +263,8 @@ public class CompilerController {
     codeColumn.setCellValueFactory(new PropertyValueFactory<>("type"));
     posColumn.setCellValueFactory(new PropertyValueFactory<>("pos"));
     ObservableList<TokenView> tokenViews = tokens.stream()
-                                                  .map(token -> token.toView(tokens.indexOf(token)))
-                                                  .collect(Collectors.toCollection(FXCollections::observableArrayList));
+                                                 .map(token -> token.toView(tokens.indexOf(token)))
+                                                 .collect(Collectors.toCollection(FXCollections::observableArrayList));
     resultTable.setItems(tokenViews);
 
     // 初版的输出框-保留以防万一
@@ -223,9 +274,22 @@ public class CompilerController {
     // }
     // resultArea.setText(result.toString());
     if (!outInfos.isEmpty()) {
+      if (outInfos.hasError()) {
+        outInfos.error("词法分析", "词法分析过程中发生错误。");
+      } else {
+        // 输出 Token 列表到同级目录 lex_tokens.json 文件
+        try {
+          Gson gson = new GsonBuilder().disableHtmlEscaping().create();
+          String json = gson.toJson(tokens);
+          String filePath = currentFile.getParent() + File.separator + "lex_tokens.json";
+          Files.writeString(new File(filePath).toPath(), json, StandardCharsets.UTF_8);
+          outInfos.info("词法分析", "结果已保存到同级目录 lex_tokens.json 文件。");
+        } catch (IOException e) {
+          outInfos.error("词法分析", "保存词法分析结果到文件时发生错误: " + e.getMessage());
+        }
+      }
       outArea.setText(outInfos.toString());
       outPane.setExpanded(true);
-      // TODO 检测到词法分析存在 [ERROR] 级别的错误时就不会执行后续的语法分析等系列操作
     }
   }
 
@@ -347,7 +411,6 @@ public class CompilerController {
     return result.get() == ButtonType.NO; // 用户选择不保存
   }
 
-
   private boolean saveFile() {
     if (currentFile == null) {
       return saveAs();
@@ -355,15 +418,14 @@ public class CompilerController {
 
     try {
       String content = replaceTabs(codeArea.getText()); // 二次验证替换
-      Files.write(currentFile.toPath(), content.getBytes(StandardCharsets.UTF_8));
+      Files.writeString(currentFile.toPath(), content);
       isModified = false;
       return true;
     } catch (IOException e) {
-      showAlert("保存错误", "无法保存文件: " + e.getMessage());
+      showAlert(AlertType.ERROR, "无法保存文件: " + e.getMessage());
       return false;
     }
   }
-
 
   @FXML
   private void handleNew(ActionEvent event) {
@@ -405,7 +467,7 @@ public class CompilerController {
       currentFile = file;
       isModified = false;
     } catch (IOException e) {
-      showAlert("打开错误", "无法读取文件: " + e.getMessage());
+      showAlert(AlertType.ERROR, "无法读取文件: " + e.getMessage());
     }
   }
 
@@ -420,11 +482,16 @@ public class CompilerController {
   }
 
   private boolean saveAs() {
+    Preferences prefs = Preferences.userNodeForPackage(CompilerController.class);
+    String lastPath = prefs.get("lastOpenPath", null);
     FileChooser chooser = new FileChooser();
+    if (lastPath != null) {
+      chooser.setInitialDirectory(new File(lastPath));
+    }
     chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Star Files", "*.star"));
-
     File file = chooser.showSaveDialog(codeArea.getScene().getWindow());
     if (file != null) {
+      prefs.put("lastOpenPath", file.getParent());
       if (!file.getName().endsWith(".star")) {
         file = new File(file.getAbsolutePath() + ".star");
       }
@@ -447,7 +514,7 @@ public class CompilerController {
     isModified = true;
   }
 
-  private void showAlert(String title, String message) {
-    new Alert(Alert.AlertType.ERROR, message, ButtonType.OK).showAndWait();
+  private void showAlert(Alert.AlertType type, String message) {
+    new Alert(type, message, ButtonType.OK).showAndWait();
   }
 }

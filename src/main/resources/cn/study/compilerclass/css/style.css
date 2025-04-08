@@ -8,7 +8,7 @@
   -fx-text-fill: #666;
   -fx-font-family: 'Maple Mono Normal NF CN';
   -fx-font-size: 16px;
-  -fx-background-radius: 10px 0 0 10px!important;
+  -fx-background-radius: 10px 0 0 10px !important;
 }
 
 .line-number .scroll-pane {
@@ -17,7 +17,7 @@
 }
 
 .code-area, .result-area {
-  -fx-background-radius: 0 10px 10px 0!important;
+  -fx-background-radius: 0 10px 10px 0 !important;
 }
 
 .root {
@@ -94,4 +94,50 @@
   -fx-cell-selected-background-text-color: -color-text-emphasis;
   -fx-cell-hover-background-text-fill: -color-text-emphasis;
   -fx-cell-selected-background-text-fill: -color-text-emphasis;
+}
+
+.result-tree {
+  -fx-background-color: -color-bg-default;
+  -fx-border-color: -color-border-default;
+  -fx-border-width: 1px;
+  -fx-border-radius: 10px;
+  -fx-background-radius: 10px;
+  -fx-text-fill: -color-text-default;
+  -fx-indent: 15;
+  -fx-cell-size: 16;
+}
+
+.tree-cell {
+  -fx-indent: 15;
+  -fx-cell-size: 16;
+}
+
+.tree-cell:empty {
+  -fx-background-color: transparent; /* 避免遮挡 */
+}
+
+.tree-view:focused .tree-cell:filled:selected {
+  -fx-background-color: -color-accent-emphasis;
+}
+
+.tree-cell.default {
+  -fx-text-fill: -color-text-default;
+}
+
+.tree-cell.error {
+  -fx-text-fill: #ff6b6b;
+  -fx-font-weight: bold;
+}
+
+.tree-cell.middle-node {
+  -fx-text-fill: #6631a4;
+}
+
+.tree-cell.type-node {
+  -fx-text-fill: #2c9f62;
+}
+
+.tree-cell.root-node {
+  -fx-text-fill: #80feff;
+  -fx-font-weight: bold;
 }
