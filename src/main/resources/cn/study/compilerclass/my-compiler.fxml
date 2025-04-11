@@ -63,7 +63,7 @@
       <items>
         <VBox prefHeight="200.0" prefWidth="100.0">
           <children>
-            <Label alignment="CENTER" contentDisplay="CENTER" maxWidth="1.7976931348623157E308" text="源程序" textAlignment="CENTER">
+            <Label fx:id="fileLabel" alignment="CENTER" contentDisplay="CENTER" maxWidth="1.7976931348623157E308" text="源程序" textAlignment="CENTER">
             </Label>
             <HBox VBox.vgrow="ALWAYS">
               <children>

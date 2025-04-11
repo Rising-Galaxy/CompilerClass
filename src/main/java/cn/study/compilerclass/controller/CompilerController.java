@@ -4,6 +4,7 @@ import cn.study.compilerclass.lexer.Lexer;
 import cn.study.compilerclass.lexer.Token;
 import cn.study.compilerclass.lexer.TokenView;
 import cn.study.compilerclass.parser.Parser;
+import cn.study.compilerclass.utils.Debouncer;
 import cn.study.compilerclass.utils.OutInfo;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -11,6 +12,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.prefs.Preferences;
 import java.util.stream.Collectors;
+import javafx.application.Platform;
+import javafx.beans.property.SimpleBooleanProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.event.ActionEvent;
@@ -33,11 +36,13 @@ import java.nio.file.Files;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 
+import static cn.study.compilerclass.CompilerApp.stage;
+
 @Slf4j
 public class CompilerController {
 
   private File currentFile;
-  private boolean isModified = false;
+  private SimpleBooleanProperty isModified = new SimpleBooleanProperty(false);
 
   @FXML
   private TextArea codeArea;
@@ -73,6 +78,13 @@ public class CompilerController {
   private HBox ResultHBox;
   @FXML
   private TreeView<String> resultTreeView;
+  @FXML
+  private Label fileLabel;
+  private String statusLabel = "源程序";
+  private int lineWidth = 2;
+  private Debouncer debouncer = new Debouncer(300);
+  private String fileTooltip = "未命名文件";
+  private Tooltip tooltip;
 
   @FXML
   public void initialize() {
@@ -85,7 +97,7 @@ public class CompilerController {
     setupFileMenu();
 
     // 添加光标位置监听器
-    codeArea.caretPositionProperty().addListener((obs, oldPos, newPos) -> updateCursorPositionLabel());
+    codeArea.caretPositionProperty().addListener((obs, oldPos, newPos) -> updateSrcCodeLabel());
 
     // 添加 Tab 键拦截器
     codeArea.addEventFilter(KeyEvent.KEY_PRESSED, event -> {
@@ -98,11 +110,50 @@ public class CompilerController {
     // 初始化结果框
     ResultVBox.getChildren().clear();
     ResultVBox.getChildren().add(ResultHBox);
+
+    // 初始化标签
+    updateSrcCodeLabel();
+
+    isModified.addListener((obs, oldVal, newVal) -> {
+      if (newVal) {
+        statusLabel = "*" + statusLabel;
+      } else {
+        statusLabel = statusLabel.replaceFirst("\\*", "");
+      }
+      debouncer.debounceFX(() -> fileLabel.setText(statusLabel));
+    });
+
+    tooltip = new Tooltip(fileTooltip);
+    fileLabel.setTooltip(tooltip);
+
+    stage.setOnCloseRequest(event -> {
+      if (isModified.getValue()) {
+        log.info("检测到文件修改，询问是否保存");
+        Alert alert = new Alert(AlertType.CONFIRMATION, "是否保存当前文件？", ButtonType.YES, ButtonType.NO, ButtonType.CANCEL);
+        Optional<ButtonType> result = alert.showAndWait();
+        if (result.isPresent() && result.get() == ButtonType.YES) {
+          saveFile();
+          log.info("文件已保存，退出程序");
+        } else if (result.isPresent() && result.get() == ButtonType.CANCEL) {
+          log.info("用户取消退出，程序继续运行");
+          debouncer.cancel();
+          event.consume();
+          return;
+        } else {
+          log.info("用户选择不保存，退出程序");
+        }
+      } else {
+        log.info("文件未修改，直接退出程序");
+      }
+      debouncer.cancel();
+      Platform.exit();
+      System.exit(0);
+    });
   }
 
   @FXML
   private void handleSyntaxAnalysis(ActionEvent event) {
-    if (currentFile == null || isModified) {
+    if (currentFile == null || isModified.getValue()) {
       showAlert(AlertType.WARNING, "请先保存当前内容，再进行语法分析。");
       return;
     }
@@ -118,12 +169,16 @@ public class CompilerController {
     }
   }
 
+  private void showAlert(Alert.AlertType type, String message) {
+    new Alert(type, message, ButtonType.OK).showAndWait();
+  }
+
   // 统一处理制表符替换
   private String replaceTabs(String text) {
     return text.replace("\t", "  ");
   }
 
-  private void updateCursorPositionLabel() {
+  private void updateSrcCodeLabel() {
     int caretPos = codeArea.getCaretPosition();
     String rawText = codeArea.getText();
 
@@ -152,9 +207,9 @@ public class CompilerController {
     List<MenuItem> fileMenuItems = fileMenu.getItems();
     MenuItem newItem = fileMenuItems.get(0);
     MenuItem openItem = fileMenuItems.get(1);
-    MenuItem saveItem = fileMenuItems.get(2);
-    MenuItem saveAsItem = fileMenuItems.get(3);
-    MenuItem closeItem = fileMenuItems.get(4);
+    MenuItem saveItem = fileMenuItems.get(3);
+    MenuItem saveAsItem = fileMenuItems.get(4);
+    MenuItem closeItem = fileMenuItems.get(6);
 
     bindKeyAndEvent(newItem, KeyCodeCombination.keyCombination("Ctrl+N"), this::handleNew);
     bindKeyAndEvent(openItem, KeyCodeCombination.keyCombination("Ctrl+O"), this::handleOpen);
@@ -239,7 +294,7 @@ public class CompilerController {
 
   @FXML
   private void handleLexicalAnalysis(ActionEvent event) {
-    if (currentFile == null || isModified) {
+    if (currentFile == null || isModified.getValue()) {
       showAlert(AlertType.WARNING, "请先保存当前内容，再进行词法分析。");
       return;
     }
@@ -387,13 +442,21 @@ public class CompilerController {
     lineNumberArea.setText(String.join("\n", java.util.stream.IntStream.rangeClosed(1, lines)
                                                                        .mapToObj(String::valueOf)
                                                                        .toArray(String[]::new)));
+    // 根据 lines 的位数调整行号区域的宽度
+    int lineNumber = String.valueOf(lines).length();
+    if (lineNumber != lineWidth) {
+      double width = lineNumberArea.getPrefWidth();
+      width = lineNumber * (width / lineWidth);
+      lineWidth = lineNumber;
+      lineNumberArea.setPrefWidth(width);
+    }
   }
 
-  private boolean confirmSave() {
-    if (!isModified) {
+  public boolean confirmSave() {
+    if (!isModified.getValue()) {
       return true; // 如果文件未被修改，则无需保存
     }
-
+    log.info("事件开始-确认保存");
     Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
     alert.setTitle("未保存的更改");
     alert.setHeaderText("当前文件包含未保存的更改，是否保存？");
@@ -406,8 +469,10 @@ public class CompilerController {
 
     Optional<ButtonType> result = alert.showAndWait();
     if (result.get() == ButtonType.YES) {
+      log.info("事件跳转-确认保存-保存");
       return saveFile(); // 用户选择保存
     }
+    log.info("事件结束-确认保存-不保存");
     return result.get() == ButtonType.NO; // 用户选择不保存
   }
 
@@ -415,13 +480,16 @@ public class CompilerController {
     if (currentFile == null) {
       return saveAs();
     }
-
+    log.info("事件开始-保存");
     try {
       String content = replaceTabs(codeArea.getText()); // 二次验证替换
       Files.writeString(currentFile.toPath(), content);
-      isModified = false;
+      isModified.set(false);
+      // updateStatusLabel();
+      log.info("事件结束-保存-成功");
       return true;
     } catch (IOException e) {
+      log.error("事件结束-保存-失败", e);
       showAlert(AlertType.ERROR, "无法保存文件: " + e.getMessage());
       return false;
     }
@@ -430,9 +498,12 @@ public class CompilerController {
   @FXML
   private void handleNew(ActionEvent event) {
     if (confirmSave()) {
+      log.info("事件开始-新建");
       codeArea.clear();
       currentFile = null;
-      isModified = false;
+      isModified.set(false);
+      // updateStatusLabel();
+      log.info("事件结束-新建");
     }
   }
 
@@ -441,7 +512,7 @@ public class CompilerController {
     if (!confirmSave()) {
       return;
     }
-
+    log.info("事件开始-打开");
     FileChooser chooser = new FileChooser();
     chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Star Files", "*.star"));
 
@@ -449,24 +520,41 @@ public class CompilerController {
     Preferences prefs = Preferences.userNodeForPackage(CompilerController.class);
     String lastPath = prefs.get("lastOpenPath", null);
     if (lastPath != null) {
+      log.info("上次打开路径: {}", lastPath);
       chooser.setInitialDirectory(new File(lastPath));
     }
-
     File file = chooser.showOpenDialog(codeArea.getScene().getWindow());
+    log.info("准备打开的文件: {}", file);
     if (file != null) {
       // 保存当前路径
       prefs.put("lastOpenPath", file.getParent());
       loadFile(file);
+      updateFileTooltip();
+      log.info("事件结束-打开");
+    } else {
+      log.info("事件结束-打开-取消");
     }
+  }
+
+  private void updateFileTooltip() {
+    if (currentFile == null) {
+      fileTooltip = "未命名文件";
+    } else {
+      fileTooltip = currentFile.getAbsolutePath();
+    }
+    tooltip.setText(fileTooltip);
   }
 
   private void loadFile(File file) {
     try {
+      log.info("准备读取文件: {}", file);
       String content = Files.readString(file.toPath());
       codeArea.setText(replaceTabs(content)); // 强制转换制表符
       currentFile = file;
-      isModified = false;
+      isModified.set(false);
+      log.info("文件读取完成: {}", file);
     } catch (IOException e) {
+      log.error("文件读取失败", e);
       showAlert(AlertType.ERROR, "无法读取文件: " + e.getMessage());
     }
   }
@@ -479,17 +567,21 @@ public class CompilerController {
   @FXML
   private void handleSaveAs(ActionEvent event) {
     saveAs();
+    updateFileTooltip();
   }
 
   private boolean saveAs() {
+    log.info("事件开始-另存为");
     Preferences prefs = Preferences.userNodeForPackage(CompilerController.class);
     String lastPath = prefs.get("lastOpenPath", null);
     FileChooser chooser = new FileChooser();
     if (lastPath != null) {
+      log.info("上次保存路径: {}", lastPath);
       chooser.setInitialDirectory(new File(lastPath));
     }
     chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Star Files", "*.star"));
     File file = chooser.showSaveDialog(codeArea.getScene().getWindow());
+    log.info("准备保存的文件: {}", file);
     if (file != null) {
       prefs.put("lastOpenPath", file.getParent());
       if (!file.getName().endsWith(".star")) {
@@ -498,23 +590,23 @@ public class CompilerController {
       currentFile = file;
       return saveFile();
     }
+    log.info("事件结束-另存为-取消");
     return false;
   }
 
   @FXML
   private void handleClose(ActionEvent event) {
     if (confirmSave()) {
+      log.info("事件开始-关闭");
       codeArea.clear();
       currentFile = null;
-      isModified = false;
+      isModified.set(false);
+      updateFileTooltip();
+      log.info("事件结束-关闭");
     }
   }
 
   private void markModified() {
-    isModified = true;
-  }
-
-  private void showAlert(Alert.AlertType type, String message) {
-    new Alert(type, message, ButtonType.OK).showAndWait();
+    isModified.set(true);
   }
 }

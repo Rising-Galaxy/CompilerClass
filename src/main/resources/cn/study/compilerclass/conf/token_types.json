@@ -12,7 +12,8 @@
     "while": 10,
     "if": 11,
     "else": 12,
-    "for": 13
+    "for": 13,
+    "main": 14
   },
   "operators": {
     "(": 30,

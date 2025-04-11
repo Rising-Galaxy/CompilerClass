@@ -6,13 +6,14 @@ import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.text.Font;
 import javafx.stage.Stage;
-
 import java.io.IOException;
 
 public class CompilerApp extends Application {
+  public static Stage stage;
 
   @Override
-  public void start(Stage stage) throws IOException {
+  public void start(Stage stage1) throws IOException {
+    stage = stage1;
     Parent root = new FXMLLoader(CompilerApp.class.getResource("my-compiler.fxml")).load();
     Scene scene = new Scene(root);
     Font.loadFont(getClass().getResourceAsStream("/cn/study/compilerclass/font/MapleMonoNormal-NF-CN-Regular.ttf"), 16);
