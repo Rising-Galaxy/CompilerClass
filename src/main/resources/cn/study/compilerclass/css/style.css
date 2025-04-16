@@ -1,12 +1,12 @@
 @font-face {
-  font-family: 'Maple Mono Normal NF CN';
-  src: url('../font/MapleMonoNormal-NF-CN-Regular.ttf');
+  font-family: "Maple Mono Normal NF CN";
+  src: url("../font/MapleMonoNormal-NF-CN-Regular.ttf");
 }
 
 .line-number {
   -fx-background-color: #424659;
   -fx-text-fill: #666;
-  -fx-font-family: 'Maple Mono Normal NF CN';
+  -fx-font-family: "Maple Mono Normal NF CN";
   -fx-font-size: 16px;
   -fx-background-radius: 10px 0 0 10px !important;
 }
@@ -16,12 +16,13 @@
   -fx-vbar-policy: never;
 }
 
-.code-area, .result-area {
+.code-area,
+.result-area {
   -fx-background-radius: 0 10px 10px 0 !important;
 }
 
 .root {
-  -fx-font-family: 'Maple Mono Normal NF CN', 'JetBrains Mono', monospace;
+  -fx-font-family: "Maple Mono Normal NF CN", "JetBrains Mono", monospace;
   -fx-font-size: 16px;
 }
 
@@ -103,13 +104,16 @@
   -fx-border-radius: 10px;
   -fx-background-radius: 10px;
   -fx-text-fill: -color-text-default;
-  -fx-indent: 15;
-  -fx-cell-size: 16;
+  -fx-indent: 20;
+  -fx-cell-size: 24;
+  -fx-font-size: 14px;
 }
 
 .tree-cell {
-  -fx-indent: 15;
-  -fx-cell-size: 16;
+  -fx-indent: 20;
+  -fx-cell-size: 24;
+  -fx-padding: 4 0 4 0;
+  -fx-font-family: "Maple Mono Normal NF CN", "JetBrains Mono", monospace;
 }
 
 .tree-cell:empty {
@@ -117,7 +121,7 @@
 }
 
 .tree-view:focused .tree-cell:filled:selected {
-  -fx-background-color: -color-accent-emphasis;
+  -fx-background-color: #3a506b;
 }
 
 .tree-cell.default {
@@ -127,17 +131,89 @@
 .tree-cell.error {
   -fx-text-fill: #ff6b6b;
   -fx-font-weight: bold;
+  -fx-background-color: rgba(255, 107, 107, 0.1);
+  -fx-background-radius: 3px;
 }
 
 .tree-cell.middle-node {
-  -fx-text-fill: #6631a4;
+  -fx-text-fill: #b892ff;
+  -fx-font-weight: 600;
 }
 
 .tree-cell.type-node {
-  -fx-text-fill: #2c9f62;
+  -fx-text-fill: #2ecc71;
+  -fx-font-weight: normal;
 }
 
 .tree-cell.root-node {
   -fx-text-fill: #80feff;
   -fx-font-weight: bold;
+  -fx-font-size: 16px;
+  -fx-background-color: rgba(128, 254, 255, 0.1);
+  -fx-background-radius: 4px;
+}
+
+.tree-cell.operator-node {
+  -fx-text-fill: #ff9a3c;
+  -fx-font-weight: bold;
+}
+
+.tree-cell.keyword-node {
+  -fx-text-fill: #ff7eb6;
+  -fx-font-weight: bold;
+}
+
+.tree-cell.value-node {
+  -fx-text-fill: #e7c547;
+}
+
+.tree-cell.declaration-node {
+  -fx-text-fill: #7efff5;
+  -fx-font-weight: bold;
+}
+
+.tree-cell.symbol-node {
+  -fx-text-fill: #cccccc;
+}
+
+.tree-cell.highlight {
+  -fx-background-color: rgba(255, 255, 155, 0.2);
+  -fx-background-radius: 4px;
+  -fx-border-color: rgba(255, 255, 155, 0.4);
+  -fx-border-width: 1px;
+  -fx-border-radius: 4px;
+}
+
+/* 分隔线样式 */
+.tree-cell .tree-disclosure-node {
+  -fx-padding: 6 6 6 8;
+}
+
+/* 树形视图箭头样式 */
+.tree-cell .tree-disclosure-node .arrow {
+  -fx-background-color: #888888;
+  -fx-padding: 4;
+}
+
+/* 箭头形状 - 未展开状态 (右箭头) */
+.tree-cell:collapsed .tree-disclosure-node .arrow {
+  -fx-rotate: 0;
+  -fx-shape: "M 0 -3.5 L 4 0 L 0 3.5 z";
+}
+
+/* 箭头形状 - 展开状态 (下箭头) */
+.tree-cell:expanded .tree-disclosure-node .arrow {
+  -fx-rotate: 90;
+  -fx-shape: "M 0 -3.5 L 4 0 L 0 3.5 z";
+}
+
+/* 修复滚动后的样式问题 */
+.tree-view .virtual-flow .clipped-container .sheet .tree-cell {
+  -fx-background-color: transparent;
+  -fx-background-insets: 0;
+}
+
+/* 加号/减号样式 */
+.tree-cell .tree-disclosure-node {
+  -fx-padding: 4;
 }
