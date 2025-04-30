@@ -44,3 +44,4 @@ build/
 /.idea/encodings.xml
 /.lingma/
 /log/
+*.star
