@@ -362,18 +362,19 @@ public class Parser {
   // 语句解析
   private TokenTreeView statement() {
     try {
+      TokenTreeView tmp;
       if (isVariableDeclaration()) {
-        return variableDeclaration();
+        tmp = variableDeclaration();
       } else if (isConstDeclaration()) {
-        return constDeclaration();
+        tmp = constDeclaration();
       } else if (isIfStatement()) {
-        return ifStatement();
+        tmp = ifStatement();
       } else if (isWhileStatement()) {
-        return whileStatement();
+        tmp = whileStatement();
       } else if (isDoWhileStatement()) {
-        return doWhileStatement();
+        tmp = doWhileStatement();
       } else if (isAssignment()) {
-        return assignmentStatement();
+        tmp = assignmentStatement();
       } else {
         // 表达式语句
         TokenTreeView expr = expression();
@@ -388,10 +389,11 @@ public class Parser {
           expr.addChild(semicolonNode);
           consume();
         }
-        // 默认折叠语句
-        expr.setFolded(true);
-        return expr;
+        tmp = expr;
       }
+      // 默认折叠语句
+      tmp.setFolded(true);
+      return tmp;
     } catch (Exception e) {
       // 语句解析出错，尝试恢复到下一个有效位置
       TokenTreeView errorNode = new TokenTreeView(null, "语法错误", "ERROR", "error");
@@ -441,7 +443,12 @@ public class Parser {
     }
 
     // 循环体
-    TokenTreeView loopBody = statement();
+    TokenTreeView loopBody;
+    if (currentToken().getValue().equals("{")) {
+      loopBody = block();
+    } else {
+      loopBody = statement();
+    }
     loopBody.setParent(node);
     loopBody.setNodeInfo("STATEMENT", "循环体");
     node.addChild(loopBody);
@@ -466,7 +473,12 @@ public class Parser {
     consume();
 
     // 循环体
-    TokenTreeView loopBody = statement();
+    TokenTreeView loopBody;
+    if (currentToken().getValue().equals("{")) {
+      loopBody = block();
+    } else {
+      loopBody = statement();
+    }
     loopBody.setParent(node);
     loopBody.setNodeInfo("STATEMENT", "循环体");
     node.addChild(loopBody);
@@ -523,6 +535,7 @@ public class Parser {
   private TokenTreeView variableDeclaration() {
     TokenTreeView node = new TokenTreeView(null, "变量声明", "DECLARATION", "declaration-node");
     node.setNodeInfo("DECLARATION", "变量定义");
+    node.setFolded(true);
 
     // 类型
     String typeValue = currentToken().getValue();
@@ -572,6 +585,7 @@ public class Parser {
     TokenTreeView node = new TokenTreeView(null, "常量声明", "DECLARATION", "declaration-node");
     node.setNodeInfo("DECLARATION", "常量定义");
     node.highlightNode(); // 常量是重要节点，高亮显示
+    node.setFolded(true);
 
     // const关键字
     TokenTreeView constNode = new TokenTreeView(node, "const", "KEYWORD", "keyword-node");
@@ -652,7 +666,7 @@ public class Parser {
     node.setNodeInfo("STATEMENT", "条件控制结构");
 
     int branchCount = 1;
-    TokenTreeView ifNode = new TokenTreeView(node, "if-"+branchCount, "BLOCK", "middle-node");
+    TokenTreeView ifNode = new TokenTreeView(node, "if-" + branchCount, "BLOCK", "middle-node");
     ifNode.setNodeInfo("BLOCK", "条件为真时进入的分支");
     node.addChild(ifNode);
     branchCount++;
@@ -701,8 +715,8 @@ public class Parser {
 
     // 处理elif分支
     while (!isEOF() && isElifStatement()) {
-      TokenTreeView elifNode = new TokenTreeView(node, "elif-"+branchCount, "BLOCK", "middle-node");
-      elifNode.setNodeInfo("BLOCK", "满足第"+branchCount+"个 elif 条件时进入的分支");
+      TokenTreeView elifNode = new TokenTreeView(node, "elif-" + branchCount, "BLOCK", "middle-node");
+      elifNode.setNodeInfo("BLOCK", "满足第" + branchCount + "个 elif 条件时进入的分支");
       node.addChild(elifNode);
       branchCount++;
       // 默认折叠分支
@@ -750,7 +764,7 @@ public class Parser {
 
     // 可选的else分支
     if (!isEOF() && currentToken().getValue().equals("else")) {
-      TokenTreeView elseNode = new TokenTreeView(node, "else-"+branchCount, "BLOCK", "middle-node");
+      TokenTreeView elseNode = new TokenTreeView(node, "else-" + branchCount, "BLOCK", "middle-node");
       elseNode.setNodeInfo("BLOCK", "条件全部不满足时进入的分支");
       node.addChild(elseNode);
       // 默认折叠分支
@@ -1194,6 +1208,7 @@ public class Parser {
   private TokenTreeView functionPrototype() {
     TokenTreeView node = new TokenTreeView(null, "函数声明", "FUNCTION_PROTOTYPE", "middle-node");
     node.setNodeInfo("FUNCTION_PROTOTYPE", "函数原型声明");
+    node.setFolded(true);
 
     // 返回类型
     if (!isType(currentToken())) {
@@ -1251,6 +1266,7 @@ public class Parser {
   private TokenTreeView functionDefinition() {
     TokenTreeView node = new TokenTreeView(null, "函数定义", "FUNCTION_DEFINITION", "middle-node");
     node.setNodeInfo("FUNCTION_DEFINITION", "函数实现");
+    node.setFolded(true);
 
     // 返回类型
     if (!isType(currentToken())) {
