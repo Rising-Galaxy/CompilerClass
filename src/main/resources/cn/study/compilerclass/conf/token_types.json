@@ -12,11 +12,10 @@
     "while": 10,
     "if": 11,
     "else": 12,
-    "for": 13,
-    "main": 14,
-    "bool": 15,
-    "True": 16,
-    "False": 17
+    "main": 13,
+    "bool": 14,
+    "True": 15,
+    "False": 16
   },
   "operators": {
     "(": 30,
