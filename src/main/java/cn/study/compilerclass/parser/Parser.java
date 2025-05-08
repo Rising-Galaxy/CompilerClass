@@ -638,56 +638,86 @@ public class Parser {
   }
 
   // 常量声明解析
-  private boolean isConstDeclaration() {
-    return currentToken().getValue().equals("const");
-  }
+private boolean isConstDeclaration() {
+  return currentToken().getValue().equals("const");
+}
 
   private TokenTreeView constDeclaration() {
-    TokenTreeView node = new TokenTreeView(null, "常量声明", "DECLARATION", "declaration-node");
-    node.setNodeInfo("DECLARATION", "常量定义");
-    node.highlightNode(); // 常量是重要节点，高亮显示
+    // 创建一个父节点来包含所有常量声明
+    TokenTreeView node = new TokenTreeView(null, "常量声明列表", "CONST_DECLARATION_LIST", "declaration-node");
+    node.setNodeInfo("CONST_DECLARATION_LIST", "常量声明列表");
 
     // const关键字
     TokenTreeView constNode = new TokenTreeView(node, "const", "KEYWORD", "keyword-node");
-    constNode.setNodeInfo("KEYWORD", "常量关键字");
+    constNode.setNodeInfo("KEYWORD", "常量声明关键字");
     node.addChild(constNode);
     consume();
 
-    // 类型
-    if (!isType(currentToken()) || currentToken().getValue().equals("void")) {
-      error(String.format("[r: %d, c: %d]-const后缺少类型", currentToken().getLine(), currentToken().getColumn()));
+    // 类型（所有常量共享同一类型）
+    if (!isType(currentToken())) {
+      error(String.format("[r: %d, c: %d]-常量声明缺少类型", currentToken().getLine(), currentToken().getColumn()));
     }
     String typeValue = currentToken().getValue();
     TokenTreeView typeNode = new TokenTreeView(node, typeValue, "TYPE", "type-node");
-    typeNode.setNodeInfo("TYPE", "常量类型");
     node.addChild(typeNode);
     consume();
 
-    // 标识符
-    if (!isIdentifier(currentToken())) {
-      error(String.format("[r: %d, c: %d]-Expected identifier", currentToken().getLine(), currentToken().getColumn()));
-    }
-    String identName = currentToken().getValue();
-    TokenTreeView idNode = new TokenTreeView(node, identName, "IDENTIFIER", "type-node");
-    idNode.setNodeInfo("IDENTIFIER", "常量名");
-    node.addChild(idNode);
-    consume();
+    // 解析第一个常量定义
+    parseConstDefinition(node, typeValue);
 
-    // 必须进行初始化
-    if (currentToken().getType() != tokenManager.getType("=")) {
-      error(String.format("[r: %d, c: %d]-常量必须进行初始化", currentToken().getLine(), currentToken().getColumn()));
+    // 处理多个常量定义（以逗号分隔）
+    while (currentToken().getType() == tokenManager.getType(",")) {
+      // 添加逗号节点
+      TokenTreeView commaNode = new TokenTreeView(node, ",", "SYMBOL", "symbol-node");
+      node.addChild(commaNode);
+      consume();
+
+      // 解析下一个常量定义
+      parseConstDefinition(node, typeValue);
     }
-    varInit(node);
 
     // 分号
     if (currentToken().getType() != tokenManager.getType(";")) {
-      error(String.format("[r: %d, c: %d]-Expected ';'", currentToken().getLine(), currentToken().getColumn()));
+      error(String.format("[r: %d, c: %d]-常量声明后缺少';'", currentToken().getLine(), currentToken().getColumn()));
+    } else {
+      TokenTreeView semicolonNode = new TokenTreeView(node, ";", "SYMBOL", "symbol-node");
+      node.addChild(semicolonNode);
+      consume();
     }
-    TokenTreeView semicolonNode = new TokenTreeView(node, ";", "SYMBOL", "symbol-node");
-    node.addChild(semicolonNode);
-    consume();
 
     return node;
+  }
+
+  // 解析单个常量定义
+  private void parseConstDefinition(TokenTreeView parent, String typeValue) {
+    // 创建常量定义节点
+    TokenTreeView constDefNode = new TokenTreeView(parent, "常量定义", "CONST_DEFINITION", "declaration-node");
+    constDefNode.setNodeInfo("CONST_DEFINITION", "常量定义");
+    parent.addChild(constDefNode);
+
+    // 标识符
+    if (currentToken().getType() != tokenManager.getType("_IDENTIFIER_")) {
+      error(String.format("[r: %d, c: %d]-常量声明缺少标识符", currentToken().getLine(), currentToken().getColumn()));
+    }
+    String identifierValue = currentToken().getValue();
+    TokenTreeView identifierNode = new TokenTreeView(constDefNode, identifierValue, "IDENTIFIER", "symbol-node");
+    identifierNode.setNodeInfo("IDENTIFIER", "常量名");
+    constDefNode.addChild(identifierNode);
+    consume();
+
+    // 等号
+    if (currentToken().getType() != tokenManager.getType("=")) {
+      error(String.format("[r: %d, c: %d]-常量定义缺少'='", currentToken().getLine(), currentToken().getColumn()));
+    }
+    TokenTreeView equalsNode = new TokenTreeView(constDefNode, "=", "OPERATOR", "operator-node");
+    constDefNode.addChild(equalsNode);
+    consume();
+
+    // 常量值（必须有初始值）
+    TokenTreeView valueExpr = expression();
+    valueExpr.setParent(constDefNode);
+    valueExpr.setNodeInfo("EXPRESSION", "常量值");
+    constDefNode.addChild(valueExpr);
   }
 
   // 判断是否为if语句
