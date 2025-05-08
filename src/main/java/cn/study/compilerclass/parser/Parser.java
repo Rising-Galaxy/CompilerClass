@@ -331,28 +331,25 @@ public class Parser {
   // 代码块解析
   private TokenTreeView block() {
     TokenTreeView node = new TokenTreeView(null, "代码块", "BLOCK", "middle-node");
-    node.setNodeInfo("BLOCK", "语句块");
 
-    // 左大括号
     if (currentToken().getType() != tokenManager.getType("{")) {
-      error(String.format("[r: %d, c: %d]-缺少'{'开始代码块", currentToken().getLine(), currentToken().getColumn()));
+      error("缺少 '{'");
     }
-    TokenTreeView openBraceNode = new TokenTreeView(node, "{", "SYMBOL", "symbol-node");
-    node.addChild(openBraceNode);
     consume();
 
-    // 语句序列
-    while (currentToken().getType() != tokenManager.getType("}") && !isEOF()) {
-      node.addChild(statement());
+    while (!isEOF() && currentToken().getType() != tokenManager.getType("}")) {
+      if (isVariableDeclaration()) {
+        node.addChild(variableDeclaration());
+      } else {
+        node.addChild(statement());
+      }
     }
 
-    // 右大括号
-    if (currentToken().getType() != tokenManager.getType("}")) {
-      error(String.format("[r: %d, c: %d]-缺少'}'结束代码块", currentToken().getLine(), currentToken().getColumn()));
+    if (currentToken().getType() == tokenManager.getType("}")) {
+      consume();
+    } else {
+      error("缺少 '}'");
     }
-    TokenTreeView closeBraceNode = new TokenTreeView(node, "}", "SYMBOL", "symbol-node");
-    node.addChild(closeBraceNode);
-    consume();
 
     return node;
   }
@@ -1112,41 +1109,21 @@ public class Parser {
                                                                                                                                                                                                        .equals("False");
   }
 
-  // 判断是否为函数声明（包括原型和定义）
-  private boolean isFunctionDeclaration() {
-    return isFunctionPrototype() || isFunctionDefinition();
-  }
-
   // 判断是否为函数声明（原型）
   private boolean isFunctionPrototype() {
-    // 首先检查是否有足够的token来判断函数声明
-    if (isEOF() || currentPos + 3 >= tokens.size()) {
+    if (isNotFunctionDeclarationStart()) {
       return false;
     }
 
-    // 函数声明的模式：类型 标识符 ( ... ) ;
-    // 检查前三个token是否符合：类型 标识符 (
-    boolean basicPattern = isType(currentToken()) && lookahead(1).getType() == tokenManager.getType("_IDENTIFIER_") && lookahead(2).getType() == tokenManager.getType("(");
-
-    if (!basicPattern) {
-      return false;
-    }
-
-    // 向前查找右括号后是否跟着分号
-    int pos = currentPos + 3; // 跳过类型、标识符和左括号
-    int parenCount = 1; // 已经看到一个左括号
+    int pos = currentPos + 3;
+    int parenCount = 1;
 
     while (pos < tokens.size() && parenCount > 0) {
-      Token token = tokens.get(pos);
-      if (token.getType() == tokenManager.getType("(")) {
-        parenCount++;
-      } else if (token.getType() == tokenManager.getType(")")) {
-        parenCount--;
-      }
-      pos++;
+      Token t = tokens.get(pos++);
+      if (t.getType() == tokenManager.getType("(")) parenCount++;
+      else if (t.getType() == tokenManager.getType(")")) parenCount--;
     }
 
-    // 如果找到了匹配的右括号，检查下一个token是否为分号
     return pos < tokens.size() && tokens.get(pos).getType() == tokenManager.getType(";");
   }
 
@@ -1172,34 +1149,19 @@ public class Parser {
 
   // 判断是否为函数定义
   private boolean isFunctionDefinition() {
-    // 首先检查是否有足够的token来判断函数定义
-    if (isEOF() || currentPos + 3 >= tokens.size()) {
+    if (isNotFunctionDeclarationStart()) {
       return false;
     }
 
-    // 函数定义的模式：类型 标识符 ( ... ) {
-    // 检查前三个token是否符合：类型 标识符 (
-    boolean basicPattern = isType(currentToken()) && lookahead(1).getType() == tokenManager.getType("_IDENTIFIER_") && lookahead(2).getType() == tokenManager.getType("(");
-
-    if (!basicPattern) {
-      return false;
-    }
-
-    // 向前查找右括号后是否跟着左大括号
-    int pos = currentPos + 3; // 跳过类型、标识符和左括号
-    int parenCount = 1; // 已经看到一个左括号
+    int pos = currentPos + 3;
+    int parenCount = 1;
 
     while (pos < tokens.size() && parenCount > 0) {
-      Token token = tokens.get(pos);
-      if (token.getType() == tokenManager.getType("(")) {
-        parenCount++;
-      } else if (token.getType() == tokenManager.getType(")")) {
-        parenCount--;
-      }
-      pos++;
+      Token t = tokens.get(pos++);
+      if (t.getType() == tokenManager.getType("(")) parenCount++;
+      else if (t.getType() == tokenManager.getType(")")) parenCount--;
     }
 
-    // 跳过可能的空白，检查是否有左大括号
     while (pos < tokens.size() && !tokens.get(pos).getValue().equals("{")) {
       pos++;
     }
@@ -1217,6 +1179,13 @@ public class Parser {
     // main函数的模式：void main ( )
     return currentToken().getValue().equals("void") && lookahead(1).getValue()
                                                                    .equals("main") && lookahead(2).getType() == tokenManager.getType("(");
+  }
+
+  private boolean isNotFunctionDeclarationStart() {
+    if (isEOF() || currentPos + 2 >= tokens.size()) {
+      return true;
+    }
+    return !isType(currentToken()) || lookahead(1).getType() != tokenManager.getType("_IDENTIFIER_") || lookahead(2).getType() != tokenManager.getType("(");
   }
 
   // 解析函数声明（原型）
@@ -1268,10 +1237,11 @@ public class Parser {
     // 分号
     if (currentToken().getType() != tokenManager.getType(";")) {
       error(String.format("[r: %d, c: %d]-函数声明后缺少';'", currentToken().getLine(), currentToken().getColumn()));
+    } else {
+      TokenTreeView semicolonNode = new TokenTreeView(node, ";", "SYMBOL", "symbol-node");
+      node.addChild(semicolonNode);
+      consume();
     }
-    TokenTreeView semicolonNode = new TokenTreeView(node, ";", "SYMBOL", "symbol-node");
-    node.addChild(semicolonNode);
-    consume();
 
     return node;
   }
@@ -1322,38 +1292,21 @@ public class Parser {
     node.addChild(closeParenNode);
     consume();
 
-    // 函数体
+    // 函数体（代码块）
     node.addChild(block());
 
     return node;
   }
 
-  // 解析函数声明（包括原型和定义）
-  private TokenTreeView functionDeclaration() {
-    if (isFunctionPrototype()) {
-      return functionPrototype();
-    } else {
-      return functionDefinition();
-    }
-  }
-
   // 解析参数列表
   private TokenTreeView parameterList() {
     TokenTreeView node = new TokenTreeView(null, "参数列表", "PARAMETERS", "middle-node");
-    node.setNodeInfo("PARAMETERS", "函数参数列表");
-
-    // 解析第一个参数
-    node.addChild(parameter());
-
-    // 解析剩余参数
-    while (currentToken().getType() == tokenManager.getType(",")) {
-      TokenTreeView commaNode = new TokenTreeView(node, ",", "SYMBOL", "symbol-node");
-      node.addChild(commaNode);
-      consume();
-
+    while (!isEOF() && !currentToken().getValue().equals(")")) {
       node.addChild(parameter());
+      if (currentToken().getType() == tokenManager.getType(",")) {
+        consume(); // 跳过逗号
+      }
     }
-
     return node;
   }
 
