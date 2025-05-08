@@ -530,46 +530,101 @@ public class Parser {
   }
 
   private TokenTreeView variableDeclaration() {
-    TokenTreeView node = new TokenTreeView(null, "变量声明", "DECLARATION", "declaration-node");
-    node.setNodeInfo("DECLARATION", "变量定义");
+    // 创建一个父节点来包含所有变量声明
+    TokenTreeView node = new TokenTreeView(null, "变量声明列表", "DECLARATION_LIST", "declaration-node");
+    node.setNodeInfo("DECLARATION_LIST", "变量声明列表");
 
-    // 类型
+    // 类型（所有变量共享同一类型）
     String typeValue = currentToken().getValue();
     TokenTreeView typeNode = new TokenTreeView(node, typeValue, "TYPE", "type-node");
     node.addChild(typeNode);
     consume();
 
-    // 标识符
-    if (!isIdentifier(currentToken())) {
-      error(String.format("[r: %d, c: %d]-缺少标识符", currentToken().getLine(), currentToken().getColumn()));
-    }
-    String identName = currentToken().getValue();
-    TokenTreeView idNode = new TokenTreeView(node, identName, "IDENTIFIER", "type-node");
-    idNode.setNodeInfo("IDENTIFIER", "变量名");
-    node.addChild(idNode);
-    consume();
+    // 解析第一个变量声明/定义
+    parseVariableDeclarationOrDefinition(node, typeValue);
 
-    // 可选的初始化
-    if (currentToken().getType() == tokenManager.getType("=")) {
-      TokenTreeView assignNode = new TokenTreeView(node, "=", "OPERATOR", "operator-node");
-      assignNode.setNodeInfo("OPERATOR", "赋值操作符");
-      node.addChild(assignNode);
+    // 处理多个变量声明/定义（以逗号分隔）
+    while (currentToken().getType() == tokenManager.getType(",")) {
+      // 添加逗号节点
+      TokenTreeView commaNode = new TokenTreeView(node, ",", "SYMBOL", "symbol-node");
+      node.addChild(commaNode);
       consume();
 
-      TokenTreeView exprNode = expression();
-      exprNode.setParent(node);
-      node.addChild(exprNode);
+      // 解析下一个变量声明/定义
+      parseVariableDeclarationOrDefinition(node, typeValue);
     }
 
     // 分号
     if (currentToken().getType() != tokenManager.getType(";")) {
-      error(String.format("[r: %d, c: %d]-缺少';'", currentToken().getLine(), currentToken().getColumn()));
+      error(String.format("[r: %d, c: %d]-变量声明后缺少';'", currentToken().getLine(), currentToken().getColumn()));
+    } else {
+      TokenTreeView semicolonNode = new TokenTreeView(node, ";", "SYMBOL", "symbol-node");
+      node.addChild(semicolonNode);
+      consume();
     }
-    TokenTreeView semicolonNode = new TokenTreeView(node, ";", "SYMBOL", "symbol-node");
-    node.addChild(semicolonNode);
-    consume();
 
     return node;
+  }
+
+  // 解析单个变量的声明或定义
+  private void parseVariableDeclarationOrDefinition(TokenTreeView parent, String typeValue) {
+    // 判断是声明还是定义
+    boolean hasInitializer = false;
+    
+    // 向前看一个token，检查是否有初始化器
+    int savedPos = currentPos;
+    String identName = "";
+    
+    if (isIdentifier(currentToken())) {
+      identName = currentToken().getValue();
+      consume(); // 消费标识符
+      
+      // 检查是否有等号（初始化）
+      if (currentToken().getType() == tokenManager.getType("=")) {
+        hasInitializer = true;
+      }
+    }
+    
+    // 恢复位置
+    currentPos = savedPos;
+    
+    // 创建适当的节点（声明或定义）
+    TokenTreeView varNode;
+    if (hasInitializer) {
+      varNode = new TokenTreeView(parent, "变量定义", "DEFINITION", "declaration-node");
+      varNode.setNodeInfo("DEFINITION", "变量定义（带初始值）");
+    } else {
+      varNode = new TokenTreeView(parent, "变量声明", "DECLARATION", "declaration-node");
+      varNode.setNodeInfo("DECLARATION", "变量声明（无初始值）");
+    }
+    parent.addChild(varNode);
+    
+    // 添加类型信息
+    TokenTreeView typeNode = new TokenTreeView(varNode, typeValue, "TYPE", "type-node");
+    varNode.addChild(typeNode);
+    
+    // 标识符
+    if (!isIdentifier(currentToken())) {
+      error(String.format("[r: %d, c: %d]-缺少标识符", currentToken().getLine(), currentToken().getColumn()));
+    } else {
+      identName = currentToken().getValue();
+      TokenTreeView idNode = new TokenTreeView(varNode, identName, "IDENTIFIER", "type-node");
+      idNode.setNodeInfo("IDENTIFIER", "变量名");
+      varNode.addChild(idNode);
+      consume();
+    }
+
+    // 处理初始化（如果有）
+    if (currentToken().getType() == tokenManager.getType("=")) {
+      TokenTreeView assignNode = new TokenTreeView(varNode, "=", "OPERATOR", "operator-node");
+      assignNode.setNodeInfo("OPERATOR", "赋值操作符");
+      varNode.addChild(assignNode);
+      consume();
+
+      TokenTreeView exprNode = expression();
+      exprNode.setParent(varNode);
+      varNode.addChild(exprNode);
+    }
   }
 
   // 常量声明解析
