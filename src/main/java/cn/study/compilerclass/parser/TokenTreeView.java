@@ -29,7 +29,7 @@ public class TokenTreeView {
     this.nodeType = "";
     this.description = "";
     this.highlight = false;
-    this.folded = false;
+    this.folded = true;
   }
 
   /**
@@ -43,7 +43,7 @@ public class TokenTreeView {
     this.nodeType = nodeType;
     this.description = "";
     this.highlight = false;
-    this.folded = false;
+    this.folded = true;
   }
 
   public void addChild(TokenTreeView child) {

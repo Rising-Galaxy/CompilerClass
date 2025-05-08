@@ -45,3 +45,4 @@ build/
 /.lingma/
 /log/
 *.star
+/.idea/
