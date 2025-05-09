@@ -17,6 +17,7 @@ import javafx.scene.control.TreeView;
 
 public class Parser {
 
+  private static final Token END_OF_TOKEN = new Token("", -1, 0, 0);
   private final TokenManager tokenManager;
   private final OutInfo outInfos;
   private final String src = "语法分析";
@@ -102,7 +103,7 @@ public class Parser {
 
   private void warn(String msg) {
     outInfos.warn(src, msg);
-    if (errorProcess != ErrorProcess.WARN) {
+    if (errorProcess == ErrorProcess.WARN) {
       throw new RuntimeException(msg);
     }
   }
@@ -190,7 +191,7 @@ public class Parser {
               getStyleClass().add("error");
             } else if (item.startsWith("程序")) {
               getStyleClass().add("root-node");
-            } else if (item.contains("表达式") || item.contains("函数") || item.contains("语句") || item.contains("声明") || item.contains("块")) {
+            } else if (item.contains("表达式") || item.contains("函数") || item.contains("语句") || item.contains("块")) {
               getStyleClass().add("middle-node");
             } else if (item.contains("常量") || item.contains("标识符") || item.contains("「TYPE」")) {
               getStyleClass().add("type-node");
@@ -257,22 +258,21 @@ public class Parser {
     program.setNodeInfo("PROGRAM", "程序入口点");
     program.setFolded(false);
 
-    // 解析全局变量、常量声明和函数定义
     while (!isEOF()) {
+      // 处理全局声明（变量声明、函数声明、函数定义）
       if (isMainFunction()) {
         program.addChild(mainFunction());
       } else if (isConstDeclaration()) {
         program.addChild(constDeclaration());
-      } else if (isVariableDeclaration()) {
-        program.addChild(variableDeclaration());
-      } else if (isFunctionPrototype()) {
-        program.addChild(functionPrototype());
-      } else if (isFunctionDefinition()) {
-        program.addChild(functionDefinition());
+      } else if (isType(currentToken())) {
+        TokenTreeView declaration = declaration();
+        if (declaration != null) {
+          program.addChild(declaration);
+        } else {
+          synchronize();
+        }
       } else {
-        error(String.format("[r: %d, c: %d]-无法识别的全局声明", currentToken().getLine(), currentToken().getColumn()));
-        // 确保至少消费一个token，避免死循环
-        consume();
+        error(String.format("[r: %d, c: %d]-非法的全局声明", currentToken().getLine(), currentToken().getColumn()), true);
         synchronize();
       }
     }
@@ -358,7 +358,10 @@ public class Parser {
   private TokenTreeView statement() {
     try {
       TokenTreeView tmp;
-      if (isVariableDeclaration()) {
+      if (isType(currentToken())) {
+        // 如果是类型，则可能是变量声明/定义或函数声明/定义
+        return declaration();
+      } else if (isVariableDeclaration()) {
         tmp = variableDeclaration();
       } else if (isConstDeclaration()) {
         tmp = constDeclaration();
@@ -368,6 +371,8 @@ public class Parser {
         tmp = whileStatement();
       } else if (isDoWhileStatement()) {
         tmp = doWhileStatement();
+      } else if (isReturnStatement()) {
+        tmp = returnStatement();
       } else if (isAssignment()) {
         tmp = assignmentStatement();
       } else {
@@ -394,6 +399,42 @@ public class Parser {
       synchronize();
       return errorNode;
     }
+  }
+
+  // 判断是否为return语句
+  private boolean isReturnStatement() {
+    return currentToken().getValue().equals("return");
+  }
+
+  // 解析return语句
+  private TokenTreeView returnStatement() {
+    TokenTreeView node = new TokenTreeView(null, "返回语句", "STATEMENT", "middle-node");
+    node.setNodeInfo("STATEMENT", "函数返回语句");
+
+    // return关键字
+    TokenTreeView returnNode = new TokenTreeView(node, "return", "KEYWORD", "keyword-node");
+    returnNode.setNodeInfo("KEYWORD", "return关键字");
+    node.addChild(returnNode);
+    consume();
+
+    // 返回值表达式（如果有）
+    if (currentToken().getType() != tokenManager.getType(";")) {
+      TokenTreeView expr = expression();
+      expr.setParent(node);
+      expr.setNodeInfo("EXPRESSION", "返回值表达式");
+      node.addChild(expr);
+    }
+
+    // 分号
+    if (currentToken().getType() != tokenManager.getType(";")) {
+      error(String.format("[r: %d, c: %d]-return语句后缺少';'", currentToken().getLine(), currentToken().getColumn()));
+    } else {
+      TokenTreeView semicolonNode = new TokenTreeView(node, ";", "SYMBOL", "symbol-node");
+      node.addChild(semicolonNode);
+      consume();
+    }
+
+    return node;
   }
 
   // 控制结构节点的通用方法
@@ -530,11 +571,12 @@ public class Parser {
     return node;
   }
 
-  // 变量声明解析
+  // 变量声明预检
   private boolean isVariableDeclaration() {
     return isType(currentToken()) && !currentToken().getValue().equals("void");
   }
 
+  // 解析变量声明/定义
   private TokenTreeView variableDeclaration() {
     // 创建一个父节点来包含所有变量声明
     TokenTreeView node = new TokenTreeView(null, "变量声明列表", "DECLARATION_LIST", "declaration-node");
@@ -551,11 +593,7 @@ public class Parser {
 
     // 处理多个变量声明/定义（以逗号分隔）
     while (currentToken().getType() == tokenManager.getType(",")) {
-      // 添加逗号节点
-      TokenTreeView commaNode = new TokenTreeView(node, ",", "SYMBOL", "symbol-node");
-      node.addChild(commaNode);
       consume();
-
       // 解析下一个变量声明/定义
       parseVariableDeclarationOrDefinition(node, typeValue);
     }
@@ -564,8 +602,6 @@ public class Parser {
     if (currentToken().getType() != tokenManager.getType(";")) {
       error(String.format("[r: %d, c: %d]-变量声明后缺少';'", currentToken().getLine(), currentToken().getColumn()));
     } else {
-      TokenTreeView semicolonNode = new TokenTreeView(node, ";", "SYMBOL", "symbol-node");
-      node.addChild(semicolonNode);
       consume();
     }
 
@@ -579,10 +615,9 @@ public class Parser {
 
     // 向前看一个token，检查是否有初始化器
     int savedPos = currentPos;
-    String identName = "";
+    String identName;
 
     if (isIdentifier(currentToken())) {
-      identName = currentToken().getValue();
       consume(); // 消费标识符
 
       // 检查是否有等号（初始化）
@@ -626,6 +661,7 @@ public class Parser {
     }
   }
 
+  // 初始化变量
   private void varInit(TokenTreeView varNode) {
     TokenTreeView assignNode = new TokenTreeView(varNode, "=", "OPERATOR", "operator-node");
     assignNode.setNodeInfo("OPERATOR", "赋值操作符");
@@ -637,11 +673,12 @@ public class Parser {
     varNode.addChild(exprNode);
   }
 
-  // 常量声明解析
-private boolean isConstDeclaration() {
-  return currentToken().getValue().equals("const");
-}
+  // 常量声明预检
+  private boolean isConstDeclaration() {
+    return currentToken().getValue().equals("const");
+  }
 
+  // 常量声明解析
   private TokenTreeView constDeclaration() {
     // 创建一个父节点来包含所有常量声明
     TokenTreeView node = new TokenTreeView(null, "常量声明列表", "CONST_DECLARATION_LIST", "declaration-node");
@@ -667,11 +704,7 @@ private boolean isConstDeclaration() {
 
     // 处理多个常量定义（以逗号分隔）
     while (currentToken().getType() == tokenManager.getType(",")) {
-      // 添加逗号节点
-      TokenTreeView commaNode = new TokenTreeView(node, ",", "SYMBOL", "symbol-node");
-      node.addChild(commaNode);
       consume();
-
       // 解析下一个常量定义
       parseConstDefinition(node, typeValue);
     }
@@ -680,8 +713,6 @@ private boolean isConstDeclaration() {
     if (currentToken().getType() != tokenManager.getType(";")) {
       error(String.format("[r: %d, c: %d]-常量声明后缺少';'", currentToken().getLine(), currentToken().getColumn()));
     } else {
-      TokenTreeView semicolonNode = new TokenTreeView(node, ";", "SYMBOL", "symbol-node");
-      node.addChild(semicolonNode);
       consume();
     }
 
@@ -694,6 +725,10 @@ private boolean isConstDeclaration() {
     TokenTreeView constDefNode = new TokenTreeView(parent, "常量定义", "CONST_DEFINITION", "declaration-node");
     constDefNode.setNodeInfo("CONST_DEFINITION", "常量定义");
     parent.addChild(constDefNode);
+
+    // 添加类型信息
+    TokenTreeView typeNode = new TokenTreeView(constDefNode, typeValue, "TYPE", "type-node");
+    constDefNode.addChild(typeNode);
 
     // 标识符
     if (currentToken().getType() != tokenManager.getType("_IDENTIFIER_")) {
@@ -723,13 +758,6 @@ private boolean isConstDeclaration() {
   // 判断是否为if语句
   private boolean isIfStatement() {
     return currentToken().getValue().equals("if");
-  }
-
-  private Token currentToken() {
-    if (currentPos >= tokens.size()) {
-      return new Token("", -1, 0, 0);
-    }
-    return tokens.get(currentPos);
   }
 
   // 解析if语句
@@ -1139,64 +1167,61 @@ private boolean isConstDeclaration() {
                                                                                                                                                                                                        .equals("False");
   }
 
-  // 判断是否为函数声明（原型）
-  private boolean isFunctionPrototype() {
-    if (isNotFunctionDeclarationStart()) {
-      return false;
+  /**
+   * 预先检测当前语法结构是变量声明/定义还是函数声明/定义
+   *
+   * @return 检测结果枚举
+   */
+  private DeclarationType detectDeclarationType() {
+    // 保存当前位置以便回溯
+    int savedPos = currentPos;
+
+    // 跳过类型
+    consume();
+
+    // 检查是否有标识符
+    if (!isIdentifier(currentToken())) {
+      currentPos = savedPos; // 恢复位置
+      return DeclarationType.UNKNOWN;
     }
 
-    int pos = currentPos + 3;
-    int parenCount = 1;
+    // 跳过标识符
+    consume();
 
-    while (pos < tokens.size() && parenCount > 0) {
-      Token t = tokens.get(pos++);
-      if (t.getType() == tokenManager.getType("(")) parenCount++;
-      else if (t.getType() == tokenManager.getType(")")) parenCount--;
+    // 检查下一个token
+    Token nextToken = currentToken();
+
+    // 恢复位置
+    currentPos = savedPos;
+
+    // 根据下一个token判断类型
+    if (nextToken.getType() == tokenManager.getType("(")) {
+      // 如果是左括号，可能是函数声明或定义
+      // 进一步判断是函数声明还是函数定义
+      int pos = currentPos + 3;
+      while (pos < tokens.size() && !tokens.get(pos).getValue().equals(")")) {
+        pos++;
+      }
+      pos++;
+      // 看右括号后面的token是否是左大括号从而判断是否是函数定义
+      if (pos < tokens.size() && tokens.get(pos).getValue().equals("{")) {
+        return DeclarationType.FUNCTION_DEFINITION;
+      } else {
+        // 否则全当成函数声明
+        // 无论后面是缺分号或是没有token了，都认为是函数声明
+        // 交给分析进行处理报错，此处仅作预检测
+        return DeclarationType.FUNCTION_PROTOTYPE;
+      }
     }
 
-    return pos < tokens.size() && tokens.get(pos).getType() == tokenManager.getType(";");
+    // 默认为变量声明/定义
+    return DeclarationType.VARIABLE;
   }
 
-  // 辅助方法
+  // 检测是否为类型关键字
   private boolean isType(Token token) {
     String value = token.getValue();
     return value.equals("int") || value.equals("float") || value.equals("bool") || value.equals("void");
-  }
-
-  /**
-   * 预览 offset 位后的token
-   *
-   * @param offset 偏移量
-   * @return 预览的token
-   */
-  private Token lookahead(int offset) {
-    int index = currentPos + offset;
-    if (index >= tokens.size()) {
-      return new Token("", -1, 0, 0);
-    }
-    return tokens.get(index);
-  }
-
-  // 判断是否为函数定义
-  private boolean isFunctionDefinition() {
-    if (isNotFunctionDeclarationStart()) {
-      return false;
-    }
-
-    int pos = currentPos + 3;
-    int parenCount = 1;
-
-    while (pos < tokens.size() && parenCount > 0) {
-      Token t = tokens.get(pos++);
-      if (t.getType() == tokenManager.getType("(")) parenCount++;
-      else if (t.getType() == tokenManager.getType(")")) parenCount--;
-    }
-
-    while (pos < tokens.size() && !tokens.get(pos).getValue().equals("{")) {
-      pos++;
-    }
-
-    return pos < tokens.size() && tokens.get(pos).getValue().equals("{");
   }
 
   // 判断是否为main函数
@@ -1211,11 +1236,25 @@ private boolean isConstDeclaration() {
                                                                    .equals("main") && lookahead(2).getType() == tokenManager.getType("(");
   }
 
-  private boolean isNotFunctionDeclarationStart() {
-    if (isEOF() || currentPos + 2 >= tokens.size()) {
-      return true;
+  private Token currentToken() {
+    if (currentPos >= tokens.size()) {
+      return END_OF_TOKEN;
     }
-    return !isType(currentToken()) || lookahead(1).getType() != tokenManager.getType("_IDENTIFIER_") || lookahead(2).getType() != tokenManager.getType("(");
+    return tokens.get(currentPos);
+  }
+
+  /**
+   * 预览 offset 位后的token
+   *
+   * @param offset 偏移量
+   * @return 预览的token
+   */
+  private Token lookahead(int offset) {
+    int index = currentPos + offset;
+    if (index >= tokens.size()) {
+      return new Token("", -1, 0, 0);
+    }
+    return tokens.get(index);
   }
 
   // 解析函数声明（原型）
@@ -1253,7 +1292,7 @@ private boolean isConstDeclaration() {
 
     // 参数列表
     if (currentToken().getType() != tokenManager.getType(")")) {
-      node.addChild(parameterList());
+      node.addChild(parameterList(false));
     }
 
     // 右括号
@@ -1311,7 +1350,7 @@ private boolean isConstDeclaration() {
 
     // 参数列表
     if (currentToken().getType() != tokenManager.getType(")")) {
-      node.addChild(parameterList());
+      node.addChild(parameterList(true));
     }
 
     // 右括号
@@ -1329,10 +1368,10 @@ private boolean isConstDeclaration() {
   }
 
   // 解析参数列表
-  private TokenTreeView parameterList() {
+  private TokenTreeView parameterList(boolean isDefinition) {
     TokenTreeView node = new TokenTreeView(null, "参数列表", "PARAMETERS", "middle-node");
     while (!isEOF() && !currentToken().getValue().equals(")")) {
-      node.addChild(parameter());
+      node.addChild(parameter(isDefinition));
       if (currentToken().getType() == tokenManager.getType(",")) {
         consume(); // 跳过逗号
       }
@@ -1341,7 +1380,7 @@ private boolean isConstDeclaration() {
   }
 
   // 解析单个参数
-  private TokenTreeView parameter() {
+  private TokenTreeView parameter(boolean isDefinition) {
     TokenTreeView node = new TokenTreeView(null, "参数", "PARAMETER", "middle-node");
     node.setNodeInfo("PARAMETER", "函数参数");
 
@@ -1356,16 +1395,53 @@ private boolean isConstDeclaration() {
     consume();
 
     // 参数名
-    if (!isIdentifier(currentToken())) {
-      error(String.format("[r: %d, c: %d]-缺少参数名", currentToken().getLine(), currentToken().getColumn()));
+    if (isIdentifier(currentToken())) {
+      if (isDefinition) {
+        String paramName = currentToken().getValue();
+        TokenTreeView paramNameNode = new TokenTreeView(node, paramName, "IDENTIFIER", "type-node");
+        paramNameNode.setNodeInfo("IDENTIFIER", "参数名");
+        node.addChild(paramNameNode);
+      } else {
+        // 如果是声明且存在参数名，给予警告
+        warn(String.format("[r: %d, c: %d]-函数声明无需参数名'%s'", currentToken().getLine(), currentToken().getColumn(), currentToken().getValue()));
+      }
+      consume();
+    } else {
+      // 如果是定义且缺少参数名，则报错
+      if (isDefinition) {
+        error(String.format("[r: %d, c: %d]-缺少参数名", currentToken().getLine(), currentToken().getColumn()));
+      }
     }
-    String paramName = currentToken().getValue();
-    TokenTreeView paramNameNode = new TokenTreeView(node, paramName, "IDENTIFIER", "type-node");
-    paramNameNode.setNodeInfo("IDENTIFIER", "参数名");
-    node.addChild(paramNameNode);
-    consume();
 
     return node;
+  }
+
+  /**
+   * 处理声明语句
+   */
+  private TokenTreeView declaration() {
+    // 预先检测声明类型
+    DeclarationType declarationType = detectDeclarationType();
+
+    return switch (declarationType) {
+      case FUNCTION_PROTOTYPE -> functionPrototype();
+      case FUNCTION_DEFINITION -> functionDefinition();
+      case VARIABLE -> variableDeclaration();
+      default -> {
+        error(String.format("[r: %d, c: %d]-未知的声明类型", currentToken().getLine(), currentToken().getColumn()));
+        yield new TokenTreeView(null, "未知声明", "ERROR", "error");
+      }
+    };
+  }
+
+  /**
+   * 声明类型枚举
+   */
+  private enum DeclarationType {
+    VARIABLE,           // 变量声明/定义
+    FUNCTION_PROTOTYPE, // 函数声明
+    FUNCTION_DEFINITION,// 函数定义
+    UNKNOWN            // 未知类型
   }
 
   private enum ErrorProcess {
