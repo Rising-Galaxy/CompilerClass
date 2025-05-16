@@ -21,7 +21,7 @@ public class Parser {
   private final TokenManager tokenManager;
   private final OutInfo outInfos;
   private final String src = "语法分析";
-  private ErrorProcess errorProcess = ErrorProcess.SKIP;
+  private ErrorProcess errorProcess = ErrorProcess.ERROR;
   private List<Token> tokens;
   private int currentPos;
   private TokenTreeView root;
@@ -123,10 +123,8 @@ public class Parser {
       root = program();
 
       // 语法分析成功后，执行语义分析
-      // if (root != null) {
-      //   info("语法分析完成，开始语义分析...");
-      //   semanticAnalyzer.analyze(root);
-      // }
+      info("语法分析完成，开始语义分析...");
+      semanticAnalyzer.analyze(root);
     } catch (Exception e) {
       errorProcess = ErrorProcess.SKIP;
       error("分析过程中出现异常", e);

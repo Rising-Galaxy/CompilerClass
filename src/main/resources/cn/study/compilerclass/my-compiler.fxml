@@ -50,6 +50,11 @@
             <MenuItem mnemonicParsing="false" onAction="#handleSyntaxAnalysis" text="语法分析" />
           </items>
         </Menu>
+        <Menu fx:id="viewMenu" mnemonicParsing="false" text="查看">
+          <items>
+            <MenuItem mnemonicParsing="false" onAction="#handleSemanticAnalysisView" text="语义分析结果" />
+          </items>
+        </Menu>
         <Menu mnemonicParsing="false" text="帮助">
           <items>
             <MenuItem mnemonicParsing="false" text="关于" />

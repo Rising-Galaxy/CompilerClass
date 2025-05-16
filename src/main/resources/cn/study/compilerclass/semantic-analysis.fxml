@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.Tab?>
+<?import javafx.scene.control.TabPane?>
+<?import javafx.scene.control.TableColumn?>
+<?import javafx.scene.control.TableView?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.VBox?>
+
+<BorderPane maxHeight="-Infinity" maxWidth="-Infinity" minHeight="-Infinity" minWidth="-Infinity" prefHeight="600.0" prefWidth="800.0" xmlns="http://javafx.com/javafx/23.0.1" xmlns:fx="http://javafx.com/fxml/1" fx:controller="cn.study.compilerclass.controller.SemanticAnalysisController">
+   <center>
+      <TabPane prefHeight="200.0" prefWidth="200.0" tabClosingPolicy="UNAVAILABLE" BorderPane.alignment="CENTER">
+        <tabs>
+          <Tab text="符号表">
+            <content>
+              <TableView fx:id="symbolTable" prefHeight="200.0" prefWidth="200.0">
+                <columns>
+                  <TableColumn fx:id="symbolNameColumn" prefWidth="150.0" text="名称" />
+                  <TableColumn fx:id="symbolTypeColumn" prefWidth="100.0" text="类型" />
+                  <TableColumn fx:id="symbolScopeColumn" prefWidth="100.0" text="作用域" />
+                  <TableColumn fx:id="symbolLineColumn" prefWidth="75.0" text="行号" />
+                  <TableColumn fx:id="symbolInfoColumn" prefWidth="200.0" text="附加信息" />
+                </columns>
+              </TableView>
+            </content>
+          </Tab>
+          <Tab text="变量表">
+            <content>
+              <TableView fx:id="variableTable" prefHeight="200.0" prefWidth="200.0">
+                <columns>
+                  <TableColumn fx:id="varNameColumn" prefWidth="150.0" text="变量名" />
+                  <TableColumn fx:id="varTypeColumn" prefWidth="100.0" text="数据类型" />
+                  <TableColumn fx:id="varScopeColumn" prefWidth="100.0" text="作用域" />
+                  <TableColumn fx:id="varInitColumn" prefWidth="75.0" text="初始值" />
+                  <TableColumn fx:id="varUsedColumn" prefWidth="75.0" text="是否使用" />
+                </columns>
+              </TableView>
+            </content>
+          </Tab>
+          <Tab text="函数表">
+            <content>
+              <TableView fx:id="functionTable" prefHeight="200.0" prefWidth="200.0">
+                <columns>
+                  <TableColumn fx:id="funcNameColumn" prefWidth="150.0" text="函数名" />
+                  <TableColumn fx:id="funcReturnTypeColumn" prefWidth="100.0" text="返回类型" />
+                  <TableColumn fx:id="funcParamsColumn" prefWidth="200.0" text="参数列表" />
+                  <TableColumn fx:id="funcLineColumn" prefWidth="75.0" text="定义行号" />
+                  <TableColumn fx:id="funcCalledColumn" prefWidth="75.0" text="调用次数" />
+                </columns>
+              </TableView>
+            </content>
+          </Tab>
+        </tabs>
+      </TabPane>
+   </center>
+   <top>
+      <VBox BorderPane.alignment="CENTER">
+         <children>
+            <Label text="语义分析结果">
+               <padding>
+                  <Insets bottom="10.0" left="10.0" right="10.0" top="10.0" />
+               </padding>
+            </Label>
+         </children>
+      </VBox>
+   </top>
+</BorderPane>

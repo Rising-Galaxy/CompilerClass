@@ -13,7 +13,9 @@ module cn.study.compilerclass {
   requires java.prefs;
 
   opens cn.study.compilerclass.controller to javafx.fxml;
+  opens cn.study.compilerclass.model to javafx.base;
   opens cn.study.compilerclass to javafx.fxml;
   opens cn.study.compilerclass.lexer to javafx.base, com.google.gson;
   exports cn.study.compilerclass;
+  exports cn.study.compilerclass.controller;
 }

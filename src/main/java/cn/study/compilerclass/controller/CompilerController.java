@@ -3,6 +3,9 @@ package cn.study.compilerclass.controller;
 import cn.study.compilerclass.lexer.Lexer;
 import cn.study.compilerclass.lexer.Token;
 import cn.study.compilerclass.lexer.TokenView;
+import cn.study.compilerclass.model.FunctionTableEntry;
+import cn.study.compilerclass.model.SymbolTableEntry;
+import cn.study.compilerclass.model.VariableTableEntry;
 import cn.study.compilerclass.parser.Parser;
 import cn.study.compilerclass.utils.Debouncer;
 import cn.study.compilerclass.utils.OutInfo;
@@ -19,6 +22,10 @@ import javafx.collections.ObservableList;
 import javafx.event.ActionEvent;
 import javafx.event.Event;
 import javafx.fxml.FXML;
+import javafx.fxml.FXMLLoader;
+import javafx.scene.Node;
+import javafx.scene.Parent;
+import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.control.Alert.AlertType;
 import javafx.scene.control.cell.PropertyValueFactory;
@@ -34,6 +41,8 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.Optional;
+import javafx.stage.Modality;
+import javafx.stage.Stage;
 import lombok.extern.slf4j.Slf4j;
 
 import static cn.study.compilerclass.CompilerApp.stage;
@@ -608,5 +617,61 @@ public class CompilerController {
 
   private void markModified() {
     isModified.set(true);
+  }
+
+  @FXML
+  private void handleSemanticAnalysisView(ActionEvent event) {
+    try {
+      // 创建新窗口
+      Stage semanticStage = new Stage();
+      semanticStage.setTitle("语义分析结果");
+  
+      // 加载语义分析结果视图FXML
+      FXMLLoader loader = new FXMLLoader(getClass().getResource("/cn/study/compilerclass/semantic-analysis.fxml"));
+      Parent root = loader.load();
+  
+      // 获取控制器
+      SemanticAnalysisController controller = loader.getController();
+  
+      // 这里应该从语义分析器获取数据并设置到控制器中
+      // 示例数据（实际应用中应该从语义分析器获取真实数据）
+      ObservableList<SymbolTableEntry> symbolData = FXCollections.observableArrayList(
+          new SymbolTableEntry("main", "int", "global", 1, "主函数"),
+          new SymbolTableEntry("x", "int", "main", 2, "局部变量")
+      );
+      controller.setSymbolTableData(symbolData);
+  
+      ObservableList<VariableTableEntry> variableData = FXCollections.observableArrayList(
+          new VariableTableEntry("x", "int", "main", "0", true),
+          new VariableTableEntry("y", "float", "main", "未初始化", false)
+      );
+      controller.setVariableTableData(variableData);
+  
+      ObservableList<FunctionTableEntry> functionData = FXCollections.observableArrayList(
+          new FunctionTableEntry("main", "int", "void", 1, 1),
+          new FunctionTableEntry("add", "int", "int a, int b", 10, 2)
+      );
+      controller.setFunctionTableData(functionData);
+  
+      // 设置场景
+      Scene scene = new Scene(root);
+      semanticStage.setScene(scene);
+  
+      // 设置模态窗口
+      semanticStage.initModality(Modality.WINDOW_MODAL);
+      // semanticStage.initOwner(((Node) event.getSource()).getScene().getWindow()); // 移除这行
+      semanticStage.initOwner(stage); // 添加这行
+  
+      // 显示窗口
+      semanticStage.show();
+    } catch (IOException e) {
+      e.printStackTrace();
+      // 显示错误信息
+      Alert alert = new Alert(Alert.AlertType.ERROR);
+      alert.setTitle("错误");
+      alert.setHeaderText("无法打开语义分析结果窗口");
+      alert.setContentText("发生错误: " + e.getMessage());
+      alert.showAndWait();
+    }
   }
 }
