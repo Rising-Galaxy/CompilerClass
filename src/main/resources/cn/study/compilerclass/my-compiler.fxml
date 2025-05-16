@@ -7,11 +7,14 @@
 <?import javafx.scene.control.MenuItem?>
 <?import javafx.scene.control.SeparatorMenuItem?>
 <?import javafx.scene.control.SplitPane?>
+<?import javafx.scene.control.Tab?>
+<?import javafx.scene.control.TabPane?>
 <?import javafx.scene.control.TableColumn?>
 <?import javafx.scene.control.TableView?>
 <?import javafx.scene.control.TextArea?>
 <?import javafx.scene.control.TitledPane?>
 <?import javafx.scene.control.TreeView?>
+<?import javafx.scene.layout.AnchorPane?>
 <?import javafx.scene.layout.BorderPane?>
 <?import javafx.scene.layout.HBox?>
 <?import javafx.scene.layout.VBox?>
@@ -48,11 +51,7 @@
           <items>
             <MenuItem mnemonicParsing="false" onAction="#handleLexicalAnalysis" text="词法分析" />
             <MenuItem mnemonicParsing="false" onAction="#handleSyntaxAnalysis" text="语法分析" />
-          </items>
-        </Menu>
-        <Menu fx:id="viewMenu" mnemonicParsing="false" text="查看">
-          <items>
-            <MenuItem mnemonicParsing="false" onAction="#handleSemanticAnalysisView" text="语义分析结果" />
+            <MenuItem mnemonicParsing="false" onAction="#handleSemanticAnalysis" text="语义分析" />
           </items>
         </Menu>
         <Menu mnemonicParsing="false" text="帮助">
@@ -82,28 +81,77 @@
           <children>
             <Label alignment="CENTER" contentDisplay="CENTER" maxWidth="1.7976931348623157E308" text="结果" textAlignment="CENTER">
             </Label>
-                  <VBox fx:id="ResultVBox" prefHeight="200.0" prefWidth="100.0" VBox.vgrow="ALWAYS">
-                     <children>
-                  <TableView fx:id="resultTable" styleClass="result-table" VBox.vgrow="ALWAYS">
-                    <columns>
-                      <TableColumn fx:id="indexColumn" editable="false" minWidth="100.0" prefWidth="100.0" text="序号" />
-                      <TableColumn fx:id="wordColumn" editable="false" maxWidth="1.7976931348623157E308" minWidth="100.0" prefWidth="-1.0" sortable="false" text="单词" />
-                      <TableColumn fx:id="codeColumn" editable="false" minWidth="100.0" prefWidth="100.0" sortable="false" text="编码" />
-                      <TableColumn fx:id="posColumn" editable="false" minWidth="100.0" prefWidth="100.0" sortable="false" text="位置" />
-                    </columns>
-                    <columnResizePolicy>
-                      <TableView fx:constant="CONSTRAINED_RESIZE_POLICY" />
-                    </columnResizePolicy>
-                  </TableView>
-                        <TreeView fx:id="resultTreeView" maxHeight="1.7976931348623157E308" styleClass="result-tree" VBox.vgrow="ALWAYS" />
-                  <HBox fx:id="ResultHBox" VBox.vgrow="ALWAYS">
-                    <children>
-                      <TextArea fx:id="lineNumbersResult" editable="false" focusTraversable="false" prefWidth="40" styleClass="line-number" />
-                      <TextArea fx:id="resultArea" editable="false" styleClass="result-area" HBox.hgrow="ALWAYS" />
-                    </children>
-                  </HBox>
-                     </children>
-                  </VBox>
+            <TabPane fx:id="mainTabPane" prefHeight="200.0" prefWidth="200.0" tabClosingPolicy="UNAVAILABLE" VBox.vgrow="ALWAYS">
+              <tabs>
+                <Tab text="词法分析">
+                  <content>
+                    <TableView fx:id="resultTable" styleClass="result-table">
+                      <columns>
+                        <TableColumn fx:id="indexColumn" editable="false" minWidth="100.0" prefWidth="100.0" text="序号" />
+                        <TableColumn fx:id="wordColumn" editable="false" maxWidth="1.7976931348623157E308" minWidth="100.0" prefWidth="-1.0" sortable="false" text="单词" />
+                        <TableColumn fx:id="codeColumn" editable="false" minWidth="100.0" prefWidth="100.0" sortable="false" text="编码" />
+                        <TableColumn fx:id="posColumn" editable="false" minWidth="100.0" prefWidth="100.0" sortable="false" text="位置" />
+                      </columns>
+                      <columnResizePolicy>
+                        <TableView fx:constant="CONSTRAINED_RESIZE_POLICY" />
+                      </columnResizePolicy>
+                    </TableView>
+                  </content>
+                </Tab>
+                <Tab text="语法分析">
+                  <content>
+                    <TreeView fx:id="resultTreeView" maxHeight="1.7976931348623157E308" styleClass="result-tree" />
+                  </content>
+                </Tab>
+                <Tab text="语义分析">
+                  <content>
+                    <TabPane tabClosingPolicy="UNAVAILABLE">
+                      <tabs>
+                        <Tab text="符号表">
+                          <content>
+                            <TableView fx:id="symbolTable" prefHeight="200.0" prefWidth="200.0">
+                              <columns>
+                                <TableColumn fx:id="symbolNameColumn" prefWidth="150.0" text="名称" />
+                                <TableColumn fx:id="symbolTypeColumn" prefWidth="100.0" text="类型" />
+                                <TableColumn fx:id="symbolScopeColumn" prefWidth="100.0" text="作用域" />
+                                <TableColumn fx:id="symbolLineColumn" prefWidth="75.0" text="行号" />
+                                <TableColumn fx:id="symbolInfoColumn" prefWidth="200.0" text="附加信息" />
+                              </columns>
+                            </TableView>
+                          </content>
+                        </Tab>
+                        <Tab text="变量表">
+                          <content>
+                            <TableView fx:id="variableTable" prefHeight="200.0" prefWidth="200.0">
+                              <columns>
+                                <TableColumn fx:id="varNameColumn" prefWidth="150.0" text="变量名" />
+                                <TableColumn fx:id="varTypeColumn" prefWidth="100.0" text="数据类型" />
+                                <TableColumn fx:id="varScopeColumn" prefWidth="100.0" text="作用域" />
+                                <TableColumn fx:id="varInitColumn" prefWidth="75.0" text="初始值" />
+                                <TableColumn fx:id="varUsedColumn" prefWidth="75.0" text="是否使用" />
+                              </columns>
+                            </TableView>
+                          </content>
+                        </Tab>
+                        <Tab text="函数表">
+                          <content>
+                            <TableView fx:id="functionTable" prefHeight="200.0" prefWidth="200.0">
+                              <columns>
+                                <TableColumn fx:id="funcNameColumn" prefWidth="150.0" text="函数名" />
+                                <TableColumn fx:id="funcReturnTypeColumn" prefWidth="100.0" text="返回类型" />
+                                <TableColumn fx:id="funcParamsColumn" prefWidth="200.0" text="参数列表" />
+                                <TableColumn fx:id="funcLineColumn" prefWidth="75.0" text="定义行号" />
+                                <TableColumn fx:id="funcCalledColumn" prefWidth="75.0" text="调用次数" />
+                              </columns>
+                            </TableView>
+                          </content>
+                        </Tab>
+                      </tabs>
+                    </TabPane>
+                  </content>
+                </Tab>
+              </tabs>
+            </TabPane>
             <TitledPane fx:id="outPane" contentDisplay="CENTER" expanded="false" graphicTextGap="2.0" text="输出">
               <content>
                 <TextArea fx:id="outArea" editable="false" />

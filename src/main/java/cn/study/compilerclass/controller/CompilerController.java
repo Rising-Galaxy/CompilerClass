@@ -7,6 +7,7 @@ import cn.study.compilerclass.model.FunctionTableEntry;
 import cn.study.compilerclass.model.SymbolTableEntry;
 import cn.study.compilerclass.model.VariableTableEntry;
 import cn.study.compilerclass.parser.Parser;
+import cn.study.compilerclass.syntax.SemanticAnalyzer;
 import cn.study.compilerclass.utils.Debouncer;
 import cn.study.compilerclass.utils.OutInfo;
 import com.google.gson.Gson;
@@ -22,10 +23,6 @@ import javafx.collections.ObservableList;
 import javafx.event.ActionEvent;
 import javafx.event.Event;
 import javafx.fxml.FXML;
-import javafx.fxml.FXMLLoader;
-import javafx.scene.Node;
-import javafx.scene.Parent;
-import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.control.Alert.AlertType;
 import javafx.scene.control.cell.PropertyValueFactory;
@@ -41,28 +38,60 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.Optional;
-import javafx.stage.Modality;
-import javafx.stage.Stage;
 import lombok.extern.slf4j.Slf4j;
 
 import static cn.study.compilerclass.CompilerApp.stage;
+import static cn.study.compilerclass.parser.Parser.treeRoot;
 
 @Slf4j
 public class CompilerController {
 
+  private SemanticAnalyzer semanticAnalyzer;
   private File currentFile;
   private SimpleBooleanProperty isModified = new SimpleBooleanProperty(false);
 
   @FXML
-  private TextArea codeArea;
+  private TableView<SymbolTableEntry> symbolTable;
   @FXML
-  private TextArea resultArea;
+  private TableColumn<SymbolTableEntry, String> symbolNameColumn;
+  @FXML
+  private TableColumn<SymbolTableEntry, String> symbolTypeColumn;
+  @FXML
+  private TableColumn<SymbolTableEntry, String> symbolScopeColumn;
+  @FXML
+  private TableColumn<SymbolTableEntry, Integer> symbolLineColumn;
+  @FXML
+  private TableColumn<SymbolTableEntry, String> symbolInfoColumn;
+  @FXML
+  private TableView<VariableTableEntry> variableTable;
+  @FXML
+  private TableColumn<VariableTableEntry, String> varNameColumn;
+  @FXML
+  private TableColumn<VariableTableEntry, String> varTypeColumn;
+  @FXML
+  private TableColumn<VariableTableEntry, String> varScopeColumn;
+  @FXML
+  private TableColumn<VariableTableEntry, String> varInitColumn;
+  @FXML
+  private TableColumn<VariableTableEntry, Boolean> varUsedColumn;
+  @FXML
+  private TableView<FunctionTableEntry> functionTable;
+  @FXML
+  private TableColumn<FunctionTableEntry, String> funcNameColumn;
+  @FXML
+  private TableColumn<FunctionTableEntry, String> funcReturnTypeColumn;
+  @FXML
+  private TableColumn<FunctionTableEntry, String> funcParamsColumn;
+  @FXML
+  private TableColumn<FunctionTableEntry, Integer> funcLineColumn;
+  @FXML
+  private TableColumn<FunctionTableEntry, Integer> funcCalledColumn;
+  @FXML
+  private TextArea codeArea;
   @FXML
   private TextArea outArea;
   @FXML
   private TextArea lineNumbersCode;
-  @FXML
-  private TextArea lineNumbersResult;
   @FXML
   private Menu editMenu;
   @FXML
@@ -82,10 +111,6 @@ public class CompilerController {
   @FXML
   private TableColumn<TokenView, String> posColumn;
   @FXML
-  private VBox ResultVBox;
-  @FXML
-  private HBox ResultHBox;
-  @FXML
   private TreeView<String> resultTreeView;
   @FXML
   private Label fileLabel;
@@ -96,9 +121,11 @@ public class CompilerController {
   private Tooltip tooltip;
 
   @FXML
+  private TabPane mainTabPane;
+
+  @FXML
   public void initialize() {
     setupLineNumbers(codeArea, lineNumbersCode);
-    setupLineNumbers(resultArea, lineNumbersResult);
     codeArea.textProperty().addListener((obs, old, val) -> markModified());
     codeArea.setFocusTraversable(true);
     setupContextMenu(codeArea);
@@ -116,12 +143,13 @@ public class CompilerController {
       }
     });
 
-    // 初始化结果框
-    ResultVBox.getChildren().clear();
-    ResultVBox.getChildren().add(ResultHBox);
-
     // 初始化标签
     updateSrcCodeLabel();
+
+    // 初始化表格列与数据模型的绑定
+    setupSymbolTable();
+    setupVariableTable();
+    setupFunctionTable();
 
     isModified.addListener((obs, oldVal, newVal) -> {
       if (newVal) {
@@ -160,18 +188,40 @@ public class CompilerController {
     });
   }
 
+  private void setupSymbolTable() {
+    symbolNameColumn.setCellValueFactory(new PropertyValueFactory<>("name"));
+    symbolTypeColumn.setCellValueFactory(new PropertyValueFactory<>("type"));
+    symbolScopeColumn.setCellValueFactory(new PropertyValueFactory<>("scope"));
+    symbolLineColumn.setCellValueFactory(new PropertyValueFactory<>("line"));
+    symbolInfoColumn.setCellValueFactory(new PropertyValueFactory<>("info"));
+  }
+
+  private void setupVariableTable() {
+    varNameColumn.setCellValueFactory(new PropertyValueFactory<>("name"));
+    varTypeColumn.setCellValueFactory(new PropertyValueFactory<>("type"));
+    varScopeColumn.setCellValueFactory(new PropertyValueFactory<>("scope"));
+    varInitColumn.setCellValueFactory(new PropertyValueFactory<>("initialValue"));
+    varUsedColumn.setCellValueFactory(new PropertyValueFactory<>("used"));
+  }
+
+  private void setupFunctionTable() {
+    funcNameColumn.setCellValueFactory(new PropertyValueFactory<>("name"));
+    funcReturnTypeColumn.setCellValueFactory(new PropertyValueFactory<>("returnType"));
+    funcParamsColumn.setCellValueFactory(new PropertyValueFactory<>("parameters"));
+    funcLineColumn.setCellValueFactory(new PropertyValueFactory<>("line"));
+    funcCalledColumn.setCellValueFactory(new PropertyValueFactory<>("callCount"));
+  }
+
   @FXML
   private void handleSyntaxAnalysis(ActionEvent event) {
     if (currentFile == null || isModified.getValue()) {
       showAlert(AlertType.WARNING, "请先保存当前内容，再进行语法分析。");
       return;
     }
-    ResultVBox.getChildren().clear();
     OutInfo outInfo = new OutInfo();
     Parser parser = new Parser(currentFile.getParent() + File.separator + "lex_tokens.json", outInfo);
     parser.parse();
     parser.getTreeView(resultTreeView);
-    ResultVBox.getChildren().add(resultTreeView);
     if (!outInfo.isEmpty()) {
       outArea.setText(outInfo.toString());
       outPane.setExpanded(true);
@@ -180,6 +230,56 @@ public class CompilerController {
 
   private void showAlert(Alert.AlertType type, String message) {
     new Alert(type, message, ButtonType.OK).showAndWait();
+  }
+
+  @FXML
+  private void handleSemanticAnalysis(ActionEvent event) {
+    if (currentFile == null || isModified.getValue()) {
+      showAlert(AlertType.WARNING, "请先保存当前内容，再进行语义分析。");
+      return;
+    }
+    OutInfo outInfo = new OutInfo();
+    semanticAnalyzer = new SemanticAnalyzer(outInfo);
+
+    // 如果有语法树，则进行语义分析
+    if (treeRoot != null) {
+      semanticAnalyzer.analyze(treeRoot);
+
+      // 获取分析结果并转换为ObservableList
+      ObservableList<SymbolTableEntry> symbolData = FXCollections.observableArrayList(semanticAnalyzer.getSymbolTableEntries());
+      setSymbolTableData(symbolData);
+
+      ObservableList<VariableTableEntry> variableData = FXCollections.observableArrayList(semanticAnalyzer.getVariableTableEntries());
+      setVariableTableData(variableData);
+
+      ObservableList<FunctionTableEntry> functionData = FXCollections.observableArrayList(semanticAnalyzer.getFunctionTableEntries());
+      setFunctionTableData(functionData);
+
+      if (!outInfo.isEmpty()) {
+        outArea.setText(outInfo.toString());
+        outPane.setExpanded(true);
+      }
+    } else {
+      // 如果没有语法树，显示提示信息
+      Alert alert = new Alert(AlertType.WARNING);
+      alert.setTitle("警告");
+      alert.setHeaderText("无法进行语义分析");
+      alert.setContentText("请先进行词法分析和语法分析以生成语法树");
+      alert.showAndWait();
+    }
+  }
+
+  // 添加方法用于从编译器控制器接收语义分析数据
+  public void setSymbolTableData(ObservableList<SymbolTableEntry> data) {
+    symbolTable.setItems(data);
+  }
+
+  public void setVariableTableData(ObservableList<VariableTableEntry> data) {
+    variableTable.setItems(data);
+  }
+
+  public void setFunctionTableData(ObservableList<FunctionTableEntry> data) {
+    functionTable.setItems(data);
   }
 
   // 统一处理制表符替换
@@ -307,8 +407,9 @@ public class CompilerController {
       showAlert(AlertType.WARNING, "请先保存当前内容，再进行词法分析。");
       return;
     }
-    ResultVBox.getChildren().clear();
-    ResultVBox.getChildren().add(resultTable);
+
+    // 切换到词法分析选项卡
+    mainTabPane.getSelectionModel().select(0);
 
     String sourceCode = codeArea.getText();
     if (sourceCode == null || sourceCode.trim().isEmpty()) {
@@ -321,7 +422,7 @@ public class CompilerController {
     Lexer lexer = new Lexer(sourceCode, outInfos);
     List<Token> tokens = lexer.analyze();
 
-    // 添加到 表格中
+    // 添加到表格中
     indexColumn.setCellValueFactory(new PropertyValueFactory<>("index"));
     wordColumn.setCellValueFactory(new PropertyValueFactory<>("value"));
     codeColumn.setCellValueFactory(new PropertyValueFactory<>("type"));
@@ -331,12 +432,6 @@ public class CompilerController {
                                                  .collect(Collectors.toCollection(FXCollections::observableArrayList));
     resultTable.setItems(tokenViews);
 
-    // 初版的输出框-保留以防万一
-    // StringBuilder result = new StringBuilder();
-    // for (Token token : tokens) {
-    //   result.append(String.format("[%d:%d]-{Type: %d, Value: %s}%n", token.getLine(), token.getColumn(), token.getType(), token.getValue()));
-    // }
-    // resultArea.setText(result.toString());
     if (!outInfos.isEmpty()) {
       if (outInfos.hasError()) {
         outInfos.error("词法分析", "词法分析过程中发生错误。");
@@ -414,11 +509,6 @@ public class CompilerController {
   }
 
   private TextArea getFocusedTextArea() {
-    if (codeArea.isFocused()) {
-      return codeArea;
-    } else if (resultArea.isFocused()) {
-      return resultArea;
-    }
     return codeArea;
   }
 
@@ -617,61 +707,5 @@ public class CompilerController {
 
   private void markModified() {
     isModified.set(true);
-  }
-
-  @FXML
-  private void handleSemanticAnalysisView(ActionEvent event) {
-    try {
-      // 创建新窗口
-      Stage semanticStage = new Stage();
-      semanticStage.setTitle("语义分析结果");
-  
-      // 加载语义分析结果视图FXML
-      FXMLLoader loader = new FXMLLoader(getClass().getResource("/cn/study/compilerclass/semantic-analysis.fxml"));
-      Parent root = loader.load();
-  
-      // 获取控制器
-      SemanticAnalysisController controller = loader.getController();
-  
-      // 这里应该从语义分析器获取数据并设置到控制器中
-      // 示例数据（实际应用中应该从语义分析器获取真实数据）
-      ObservableList<SymbolTableEntry> symbolData = FXCollections.observableArrayList(
-          new SymbolTableEntry("main", "int", "global", 1, "主函数"),
-          new SymbolTableEntry("x", "int", "main", 2, "局部变量")
-      );
-      controller.setSymbolTableData(symbolData);
-  
-      ObservableList<VariableTableEntry> variableData = FXCollections.observableArrayList(
-          new VariableTableEntry("x", "int", "main", "0", true),
-          new VariableTableEntry("y", "float", "main", "未初始化", false)
-      );
-      controller.setVariableTableData(variableData);
-  
-      ObservableList<FunctionTableEntry> functionData = FXCollections.observableArrayList(
-          new FunctionTableEntry("main", "int", "void", 1, 1),
-          new FunctionTableEntry("add", "int", "int a, int b", 10, 2)
-      );
-      controller.setFunctionTableData(functionData);
-  
-      // 设置场景
-      Scene scene = new Scene(root);
-      semanticStage.setScene(scene);
-  
-      // 设置模态窗口
-      semanticStage.initModality(Modality.WINDOW_MODAL);
-      // semanticStage.initOwner(((Node) event.getSource()).getScene().getWindow()); // 移除这行
-      semanticStage.initOwner(stage); // 添加这行
-  
-      // 显示窗口
-      semanticStage.show();
-    } catch (IOException e) {
-      e.printStackTrace();
-      // 显示错误信息
-      Alert alert = new Alert(Alert.AlertType.ERROR);
-      alert.setTitle("错误");
-      alert.setHeaderText("无法打开语义分析结果窗口");
-      alert.setContentText("发生错误: " + e.getMessage());
-      alert.showAndWait();
-    }
   }
 }

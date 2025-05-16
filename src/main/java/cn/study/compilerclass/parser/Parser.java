@@ -19,19 +19,17 @@ public class Parser {
 
   private static final Token END_OF_TOKEN = new Token("", -1, 0, 0);
   private final TokenManager tokenManager;
-  private final OutInfo outInfos;
+  private OutInfo outInfos;
   private final String src = "语法分析";
   private ErrorProcess errorProcess = ErrorProcess.ERROR;
   private List<Token> tokens;
   private int currentPos;
-  private TokenTreeView root;
-  private SemanticAnalyzer semanticAnalyzer;
+  public static TokenTreeView treeRoot;
 
   public Parser(String filePath, OutInfo outInfos) {
     this.tokenManager = new TokenManager();
     this.outInfos = outInfos;
     this.currentPos = 0;
-    this.semanticAnalyzer = new SemanticAnalyzer(outInfos);
     readTokens(filePath);
   }
 
@@ -120,11 +118,8 @@ public class Parser {
     info("开始语法分析...");
     try {
       // 更改入口点为完整程序解析
-      root = program();
-
-      // 语法分析成功后，执行语义分析
-      info("语法分析完成，开始语义分析...");
-      semanticAnalyzer.analyze(root);
+      treeRoot = program();
+      info("语法分析完成");
     } catch (Exception e) {
       errorProcess = ErrorProcess.SKIP;
       error("分析过程中出现异常", e);
@@ -133,10 +128,10 @@ public class Parser {
   }
 
   public void getTreeView(TreeView<String> treeView) {
-    if (root == null) {
+    if (treeRoot == null) {
       return;
     }
-    TreeItem<String> rootItem = convertToTreeItem(root);
+    TreeItem<String> rootItem = convertToTreeItem(treeRoot);
     treeView.setRoot(rootItem);
 
     // 设置树节点的样式
