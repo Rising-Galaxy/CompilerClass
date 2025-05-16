@@ -140,8 +140,8 @@
   -fx-font-weight: 600;
 }
 
-.tree-cell.type-node {
-  -fx-text-fill: #2ecc71;
+.tree-cell.normal-node {
+  -fx-text-fill: #ffffff;
   -fx-font-weight: normal;
 }
 
