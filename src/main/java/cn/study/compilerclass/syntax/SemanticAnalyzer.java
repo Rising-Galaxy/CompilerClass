@@ -1,6 +1,9 @@
 package cn.study.compilerclass.syntax;
 
 import cn.study.compilerclass.lexer.Token;
+import cn.study.compilerclass.model.FunctionTableEntry;
+import cn.study.compilerclass.model.SymbolTableEntry;
+import cn.study.compilerclass.model.VariableTableEntry;
 import cn.study.compilerclass.parser.TokenTreeView;
 import cn.study.compilerclass.utils.OutInfo;
 import java.util.HashMap;
@@ -304,7 +307,7 @@ public class SemanticAnalyzer {
      */
     public void analyze(TokenTreeView root) {
         if (root == null) {
-            error("语法树为空，无法进行语义分析");
+            error("语法树为空，无法进行语义分析，请先进行语法分析");
             return;
         }
 
@@ -985,5 +988,128 @@ public class SemanticAnalyzer {
      */
     public List<String> getWarnings() {
         return warnings;
+    }
+
+    /**
+     * 获取符号表数据，用于UI显示
+     * 
+     * @return 符号表数据列表
+     */
+    public List<SymbolTableEntry> getSymbolTableEntries() {
+        List<SymbolTableEntry> entries = new ArrayList<>();
+        
+        // 遍历所有作用域和符号
+        Stack<Scope> tempStack = new Stack<>();
+        tempStack.addAll(scopeStack);
+        
+        while (!tempStack.isEmpty()) {
+            Scope scope = tempStack.pop();
+            for (Map.Entry<String, Symbol> entry : scope.getSymbols().entrySet()) {
+                Symbol symbol = entry.getValue();
+                String typeStr = symbol.getType().toString();
+                String info = symbol.isConstant() ? "常量" : "变量";
+                info += symbol.isInitialized() ? "，已初始化" : "，未初始化";
+                info += symbol.isUsed() ? "，已使用" : "，未使用";
+                
+                // 创建符号表条目
+                entries.add(new SymbolTableEntry(
+                    symbol.getName(),
+                    typeStr,
+                    scope.getName(),
+                    0, // 行号信息需要在分析时记录
+                    info
+                ));
+            }
+            
+            // 如果有父作用域，也加入遍历
+            if (scope.getParent() != null) {
+                tempStack.push(scope.getParent());
+            }
+        }
+        
+        return entries;
+    }
+    
+    /**
+     * 获取变量表数据，用于UI显示
+     * 
+     * @return 变量表数据列表
+     */
+    public List<VariableTableEntry> getVariableTableEntries() {
+        List<VariableTableEntry> entries = new ArrayList<>();
+        
+        // 遍历所有作用域和符号
+        Stack<Scope> tempStack = new Stack<>();
+        tempStack.addAll(scopeStack);
+        
+        while (!tempStack.isEmpty()) {
+            Scope scope = tempStack.pop();
+            for (Map.Entry<String, Symbol> entry : scope.getSymbols().entrySet()) {
+                Symbol symbol = entry.getValue();
+                
+                // 只处理非函数符号
+                if (!(symbol instanceof FunctionSymbol)) {
+                    String initialValue = symbol.isInitialized() ? "已初始化" : "未初始化";
+                    
+                    // 创建变量表条目
+                    entries.add(new VariableTableEntry(
+                        symbol.getName(),
+                        symbol.getType().toString(),
+                        scope.getName(),
+                        initialValue,
+                        symbol.isUsed()
+                    ));
+                }
+            }
+            
+            // 如果有父作用域，也加入遍历
+            if (scope.getParent() != null) {
+                tempStack.push(scope.getParent());
+            }
+        }
+        
+        return entries;
+    }
+    
+    /**
+     * 获取函数表数据，用于UI显示
+     * 
+     * @return 函数表数据列表
+     */
+    public List<FunctionTableEntry> getFunctionTableEntries() {
+        List<FunctionTableEntry> entries = new ArrayList<>();
+        
+        // 遍历函数符号表
+        for (Map.Entry<String, FunctionSymbol> entry : functionSymbols.entrySet()) {
+            FunctionSymbol function = entry.getValue();
+            
+            // 构建参数字符串
+            StringBuilder paramsBuilder = new StringBuilder();
+            List<Symbol> params = function.getParameters();
+            for (int i = 0; i < params.size(); i++) {
+                Symbol param = params.get(i);
+                paramsBuilder.append(param.getType().toString())
+                             .append(" ")
+                             .append(param.getName());
+                if (i < params.size() - 1) {
+                    paramsBuilder.append(", ");
+                }
+            }
+            String paramsStr = paramsBuilder.toString();
+            if (paramsStr.isEmpty()) {
+                paramsStr = "void";
+            }
+            
+            // 创建函数表条目
+            entries.add(new FunctionTableEntry(
+                function.getName(),
+                function.getReturnType().toString(),
+                paramsStr,
+                0, // 行号信息需要在分析时记录
+                0  // 调用次数需要在分析时记录
+            ));
+        }
+        
+        return entries;
     }
 }
