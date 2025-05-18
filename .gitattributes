@@ -1,0 +1,51 @@
+# 自动检测文本文件并执行LF标准化
+* text=auto
+
+# Java源文件
+*.java text diff=java
+
+# XML文件
+*.xml text diff=xml
+*.fxml text diff=xml
+
+# 属性文件
+*.properties text
+
+# CSS文件
+*.css text diff=css
+
+# JavaScript文件
+*.js text
+
+# 文档文件
+*.md text diff=markdown
+*.txt text
+
+# 二进制文件（不进行差异比较）
+*.jar binary
+*.war binary
+*.ear binary
+*.class binary
+*.dll binary
+*.exe binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.ttf binary
+*.eot binary
+*.woff binary
+*.woff2 binary
+
+# 批处理脚本
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Shell脚本应该使用LF
+*.sh text eol=lf
+mvnw text eol=lf
+
+# 忽略某些文件的差异统计
+.gitattributes export-ignore
+.gitignore export-ignore
