@@ -222,6 +222,10 @@ public class CompilerController {
     Parser parser = new Parser(currentFile.getParent() + File.separator + "lex_tokens.json", outInfo);
     parser.parse();
     parser.getTreeView(resultTreeView);
+
+    // 切换到语法分析选项卡
+    mainTabPane.getSelectionModel().select(1);
+
     if (!outInfo.isEmpty()) {
       outArea.setText(outInfo.toString());
       outPane.setExpanded(true);
@@ -240,6 +244,9 @@ public class CompilerController {
     }
     OutInfo outInfo = new OutInfo();
     semanticAnalyzer = new SemanticAnalyzer(outInfo);
+
+    // 切换到语义分析选项卡
+    mainTabPane.getSelectionModel().select(2);
 
     // 如果有语法树，则进行语义分析
     if (treeRoot != null) {

@@ -21,7 +21,7 @@ public class Parser {
   private final TokenManager tokenManager;
   private OutInfo outInfos;
   private final String src = "语法分析";
-  private ErrorProcess errorProcess = ErrorProcess.ERROR;
+  private ErrorProcess errorProcess = ErrorProcess.SKIP;
   private List<Token> tokens;
   private int currentPos;
   public static TokenTreeView treeRoot;
@@ -59,11 +59,10 @@ public class Parser {
 
   private void error(String msg, boolean advance) {
     outInfos.error(src, msg);
-    if (advance && !isEOF()) {
-      consume(); // 报错后前进一个token
-    }
     if (errorProcess != ErrorProcess.SKIP) {
       throw new RuntimeException(msg);
+    } else if (advance && !isEOF()) {
+      consume(); // 报错后前进一个token
     }
   }
 
@@ -413,8 +412,6 @@ public class Parser {
           // 尝试同步到下一个语句
           synchronize();
         } else {
-          TokenTreeView semicolonNode = new TokenTreeView(expr, ";", "SYMBOL");
-          expr.addChild(semicolonNode);
           consume();
         }
         tmp = expr;
@@ -1233,17 +1230,26 @@ public class Parser {
 
           root = postfixNode;
         }
+      } else if (isDelimiter(currentToken())) {
+        root = new TokenTreeView(null, "语法错误", "ERROR");
+        root.setNodeInfo("ERROR", "缺少表达式");
+        error(String.format("[r: %d, c: %d]-缺少表达式", currentToken().getLine(), currentToken().getColumn()), false);
       } else {
         root = new TokenTreeView(null, "语法错误", "ERROR");
         root.setNodeInfo("ERROR", "无法识别的表达式");
-        error(String.format("[r: %d, c: %d]-无法识别的表达式", currentToken().getLine(), currentToken().getColumn()), false);
+        error(String.format("[r: %d, c: %d]-无法识别的表达式", currentToken().getLine(), currentToken().getColumn()), true);
       }
     } catch (Exception e) {
       root = new TokenTreeView(null, "表达式解析错误", "ERROR");
       root.setNodeInfo("ERROR", "解析过程中发生异常");
-      synchronize(); // 同步到下一个安全点
+      // synchronize(); // 同步到下一个安全点
     }
     return root;
+  }
+
+  // 判断是否是界符
+  private boolean isDelimiter(Token token) {
+    return token.getType() == tokenManager.getType(";") || token.getType() == tokenManager.getType("{") || token.getType() == tokenManager.getType("}") || token.getType() == tokenManager.getType("(") || token.getType() == tokenManager.getType(")") || token.getType() == tokenManager.getType(",");
   }
 
   private boolean isIdentifier(Token token) {
@@ -1259,7 +1265,7 @@ public class Parser {
   }
 
   /**
-   * 预先检测当前语法结构是变量声明/定义还是函数声明/定义
+   * 预先检测当前语法结构是变量定义还是函数定义
    *
    * @return 检测结果枚举
    */
