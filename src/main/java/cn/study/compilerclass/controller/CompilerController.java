@@ -218,6 +218,8 @@ public class CompilerController {
       showAlert(AlertType.WARNING, "请先保存当前内容，再进行语法分析。");
       return;
     }
+    // 确保样式类被应用
+    resultTreeView.getStyleClass().add("result-tree");
     OutInfo outInfo = new OutInfo();
     Parser parser = new Parser(currentFile.getParent() + File.separator + "lex_tokens.json", outInfo);
     parser.parse();

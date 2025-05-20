@@ -97,13 +97,14 @@
   -fx-cell-selected-background-text-fill: -color-text-emphasis;
 }
 
+/* 语法树节点样式 - 科技风格暗紫色带蓝色主题 */
 .result-tree {
-  -fx-background-color: -color-bg-default;
-  -fx-border-color: -color-border-default;
+  -fx-background-color: #1e1e28; /* 深色背景 */
+  -fx-border-color: #2a2a3a;
   -fx-border-width: 1px;
   -fx-border-radius: 10px;
   -fx-background-radius: 10px;
-  -fx-text-fill: -color-text-default;
+  -fx-text-fill: #f0f0f0;
   -fx-indent: 20;
   -fx-cell-size: 24;
   -fx-font-size: 14px;
@@ -114,6 +115,7 @@
   -fx-cell-size: 24;
   -fx-padding: 4 0 4 0;
   -fx-font-family: "Maple Mono Normal NF CN", "JetBrains Mono", monospace;
+  -fx-background-color: transparent;
 }
 
 .tree-cell:empty {
@@ -121,32 +123,32 @@
 }
 
 .tree-view:focused .tree-cell:filled:selected {
-  -fx-background-color: #3a506b;
+  -fx-background-color: #3a3a58; /* 选中背景色 - 深紫色 */
 }
 
 .tree-cell.default {
-  -fx-text-fill: -color-text-default;
+  -fx-text-fill: #c0c0d0; /* 默认文本颜色 - 浅灰紫色 */
 }
 
 .tree-cell.error {
-  -fx-text-fill: #ff6b6b;
+  -fx-text-fill: #ff6b6b; /* 错误文本颜色 - 红色 */
   -fx-font-weight: bold;
   -fx-background-color: rgba(255, 107, 107, 0.1);
   -fx-background-radius: 3px;
 }
 
 .tree-cell.middle-node {
-  -fx-text-fill: #b892ff;
+  -fx-text-fill: #b892ff; /* 中间节点文本颜色 - 亮紫色 */
   -fx-font-weight: 600;
 }
 
 .tree-cell.normal-node {
-  -fx-text-fill: #ffffff;
+  -fx-text-fill: #e0e0ff; /* 普通节点文本颜色 - 浅蓝白色 */
   -fx-font-weight: normal;
 }
 
 .tree-cell.root-node {
-  -fx-text-fill: #80feff;
+  -fx-text-fill: #80feff; /* 根节点文本颜色 - 青色 */
   -fx-font-weight: bold;
   -fx-font-size: 16px;
   -fx-background-color: rgba(128, 254, 255, 0.1);
@@ -154,44 +156,54 @@
 }
 
 .tree-cell.operator-node {
-  -fx-text-fill: #ff9a3c;
+  -fx-text-fill: #ffc857; /* 操作符节点文本颜色 - 金色 */
   -fx-font-weight: bold;
 }
 
 .tree-cell.keyword-node {
-  -fx-text-fill: #ff7eb6;
+  -fx-text-fill: #ff7eb6; /* 关键字节点文本颜色 - 粉色 */
   -fx-font-weight: bold;
 }
 
 .tree-cell.value-node {
-  -fx-text-fill: #e7c547;
+  -fx-text-fill: #a5f8a2; /* 值节点文本颜色 - 浅绿色 */
 }
 
 .tree-cell.declaration-node {
-  -fx-text-fill: #7efff5;
+  -fx-text-fill: #7efff5; /* 声明节点文本颜色 - 青绿色 */
   -fx-font-weight: bold;
 }
 
 .tree-cell.symbol-node {
-  -fx-text-fill: #cccccc;
+  -fx-text-fill: #a0a0b0; /* 符号节点文本颜色 - 灰色 */
+}
+
+.tree-cell.function-call {
+  -fx-text-fill: #ffb86c; /* 函数调用节点文本颜色 - 橙色 */
+  -fx-font-weight: bold;
+}
+
+.tree-cell.args {
+  -fx-text-fill: #a0a0b0; /* 参数节点文本颜色 - 灰色 */
+  -fx-font-weight: normal;
+}
+
+.tree-cell.args-list {
+  -fx-text-fill: #484866; /* 参数列表节点文本颜色 - 灰紫色 */
+  -fx-font-weight: normal;
 }
 
 .tree-cell.highlight {
-  -fx-background-color: rgba(255, 255, 155, 0.2);
+  -fx-background-color: rgba(255, 255, 155, 0.15);
   -fx-background-radius: 4px;
-  -fx-border-color: rgba(255, 255, 155, 0.4);
+  -fx-border-color: rgba(255, 255, 155, 0.3);
   -fx-border-width: 1px;
   -fx-border-radius: 4px;
 }
 
-/* 分隔线样式 */
-.tree-cell .tree-disclosure-node {
-  -fx-padding: 6 6 6 8;
-}
-
 /* 树形视图箭头样式 */
 .tree-cell .tree-disclosure-node .arrow {
-  -fx-background-color: #888888;
+  -fx-background-color: #9090a0; /* 箭头颜色 - 浅灰紫色 */
   -fx-padding: 4;
 }
 
