@@ -5,6 +5,7 @@ import cn.study.compilerclass.lexer.Token;
 import cn.study.compilerclass.lexer.TokenView;
 import cn.study.compilerclass.model.FunctionTableEntry;
 import cn.study.compilerclass.model.ConstTableEntry;
+import cn.study.compilerclass.model.MiddleTableEntry;
 import cn.study.compilerclass.model.VariableTableEntry;
 import cn.study.compilerclass.parser.Parser;
 import cn.study.compilerclass.parser.TokenTreeView;
@@ -80,6 +81,18 @@ public class CompilerController {
   @FXML
   private TableColumn<FunctionTableEntry, Integer> funcParamCountColumn;
   @FXML
+  private TableView<MiddleTableEntry> middleTable;
+  @FXML
+  private TableColumn<MiddleTableEntry, Integer> midIdColumn;
+  @FXML
+  private TableColumn<MiddleTableEntry, String> midOpColumn;
+  @FXML
+  private TableColumn<MiddleTableEntry, String> midArg1Column;
+  @FXML
+  private TableColumn<MiddleTableEntry, String> midArg2Column;
+  @FXML
+  private TableColumn<MiddleTableEntry, String> midResultColumn;
+  @FXML
   private TextArea codeArea;
   @FXML
   private TextArea outArea;
@@ -142,6 +155,7 @@ public class CompilerController {
     setupConstTable();
     setupVariableTable();
     setupFunctionTable();
+    setupMiddleTable();
 
     isModified.addListener((obs, oldVal, newVal) -> {
       if (newVal) {
@@ -201,6 +215,14 @@ public class CompilerController {
     funcParamCountColumn.setCellValueFactory(new PropertyValueFactory<>("paramCount"));
   }
 
+  private void setupMiddleTable() {
+    midIdColumn.setCellValueFactory(new PropertyValueFactory<>("id"));
+    midOpColumn.setCellValueFactory(new PropertyValueFactory<>("op"));
+    midArg1Column.setCellValueFactory(new PropertyValueFactory<>("arg1"));
+    midArg2Column.setCellValueFactory(new PropertyValueFactory<>("arg2"));
+    midResultColumn.setCellValueFactory(new PropertyValueFactory<>("result"));
+  }
+
   @FXML
   private void handleSyntaxAnalysis(ActionEvent event) {
     if (currentFile == null || isModified.getValue()) {
@@ -232,10 +254,11 @@ public class CompilerController {
     new Alert(type, message, ButtonType.OK).showAndWait();
   }
 
+  // 语义分析
   @FXML
   private void handleSemanticAnalysis(ActionEvent event) {
     if (currentFile == null || isModified.getValue()) {
-      showAlert(AlertType.WARNING, "请先保存当前内容，再进行语义分析。");
+      showAlert(AlertType.WARNING, "请先保存当前内容，再依次进行词法、语法、语义分析。");
       return;
     }
     OutInfo outInfo = new OutInfo();
@@ -249,14 +272,17 @@ public class CompilerController {
       semanticAnalyzer.analyze(Parser.treeRoot); // 使用 Parser.treeRoot
 
       // 获取分析结果并转换为ObservableList
-      ObservableList<ConstTableEntry> symbolData = FXCollections.observableArrayList(semanticAnalyzer.getConstTableEntries());
-      setConstTableData(symbolData);
+      ObservableList<ConstTableEntry> constData = FXCollections.observableArrayList(semanticAnalyzer.getConstTableEntries());
+      setConstTableData(constData);
 
       ObservableList<VariableTableEntry> variableData = FXCollections.observableArrayList(semanticAnalyzer.getVariableTableEntries());
       setVariableTableData(variableData);
 
       ObservableList<FunctionTableEntry> functionData = FXCollections.observableArrayList(semanticAnalyzer.getFunctionTableEntries());
       setFunctionTableData(functionData);
+
+      ObservableList<MiddleTableEntry> middleData = FXCollections.observableArrayList(semanticAnalyzer.getMiddleTableEntries());
+      setMiddleTableData(middleData);
 
       if (!outInfo.isEmpty()) {
         outArea.setText(outInfo.toString());
@@ -272,7 +298,6 @@ public class CompilerController {
     }
   }
 
-  // 添加方法用于从编译器控制器接收语义分析数据
   public void setConstTableData(ObservableList<ConstTableEntry> data) {
     constTable.setItems(data);
   }
@@ -283,6 +308,10 @@ public class CompilerController {
 
   public void setFunctionTableData(ObservableList<FunctionTableEntry> data) {
     functionTable.setItems(data);
+  }
+
+  public void setMiddleTableData(ObservableList<MiddleTableEntry> data) {
+    middleTable.setItems(data);
   }
 
   // 统一处理制表符替换

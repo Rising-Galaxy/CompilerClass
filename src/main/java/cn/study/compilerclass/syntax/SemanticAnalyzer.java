@@ -2,6 +2,7 @@ package cn.study.compilerclass.syntax;
 
 import cn.study.compilerclass.model.ConstTableEntry;
 import cn.study.compilerclass.model.FunctionTableEntry;
+import cn.study.compilerclass.model.MiddleTableEntry;
 import cn.study.compilerclass.model.NodeType;
 import cn.study.compilerclass.model.VariableTableEntry;
 import cn.study.compilerclass.parser.TokenTreeView;
@@ -27,10 +28,12 @@ public class SemanticAnalyzer {
   private final String src = "语义分析";
   private final List<String> errors;
   private final List<String> warnings;
+  public boolean hasError;
 
   private final List<VariableTableEntry> variableTable; // 变量表
   private final List<ConstTableEntry> constTable;     // 常量表
   private final List<FunctionTableEntry> functionTable; // 函数表
+  private final List<MiddleTableEntry> middleTableList; // 四元式表
 
   private final Stack<Integer> scopeStack;            // 作用域栈
   // 用于跟踪变量使用情况
@@ -38,6 +41,9 @@ public class SemanticAnalyzer {
   private final Set<String> declaredVariablesInScope; // 用于在当前作用域内快速检查重复声明
   private int nextScopeId;                            // 下一个作用域的ID
   private boolean mainFunctionFound;                  // 是否找到主函数
+
+  // 用于记录中间代码序号
+  private int midId = 0;
 
   /**
    * 构造函数
@@ -51,11 +57,13 @@ public class SemanticAnalyzer {
     this.variableTable = new ArrayList<>();
     this.constTable = new ArrayList<>();
     this.functionTable = new ArrayList<>();
+    this.middleTableList = new ArrayList<>();
     this.scopeStack = new Stack<>();
     this.usedVariables = new HashSet<>();
     this.declaredVariablesInScope = new HashSet<>(); // 初始化
     this.nextScopeId = 0; // 初始化，全局作用域为0
     this.mainFunctionFound = false;
+    this.hasError = false;
   }
 
   /**
@@ -93,12 +101,15 @@ public class SemanticAnalyzer {
 
       // 输出分析结果
       if (errors.isEmpty() && warnings.isEmpty()) {
+        hasError = false;
         info("语义分析完成，未发现问题");
       } else {
         if (!errors.isEmpty()) {
+          hasError = true;
           info("语义分析完成，发现 " + errors.size() + " 个错误");
         }
         if (!warnings.isEmpty()) {
+          hasError = false;
           info("语义分析完成，发现 " + warnings.size() + " 个警告");
         }
       }
@@ -199,6 +210,22 @@ public class SemanticAnalyzer {
     switch (statementNode.getNodeType()) {
       case DEFINITION -> analyzeDefinition(statementNode);
       case ASSIGNMENT_STMT -> analyzeAssignmentStatement(statementNode);
+      case UNARY_EXPR -> {
+        String operandType;
+        String value = statementNode.getValue();
+        if (value.contains("后缀") || value.contains("前缀")) {
+          if (statementNode.getValue().contains("后缀")) {
+            operandType = analyzeExpression(statementNode.getChildren().getFirst());
+          } else {
+            operandType = analyzeExpression(statementNode.getChildren().getLast());
+          }
+          if (!(operandType.equals("int") || operandType.equals("float"))) {
+            error(String.format("[r: %d, c: %d]-一元表达式类型不匹配，操作数为 %s", statementNode.getRow(), statementNode.getCol(), operandType));
+          }
+        } else {
+          error(String.format("[r: %d, c: %d]-不是语句", statementNode.getRow(), statementNode.getCol()));
+        }
+      }
       // case IF_STMT -> analyzeIfStatement(statementNode);
       // case WHILE_STMT -> analyzeWhileStatement(statementNode);
       default -> error(String.format("[r: %d, c: %d]-不是语句", statementNode.getRow(), statementNode.getCol()));
@@ -486,32 +513,6 @@ public class SemanticAnalyzer {
     return null; // 未找到
   }
 
-  // 分析条件语句
-  private void analyzeIfStatement(TokenTreeView conditionNode) {
-    // info("分析条件语句: " + ifNode.getValue());
-    ArrayList<TokenTreeView> children = conditionNode.getChildren();
-    TokenTreeView ifNode = children.getFirst(); // EXPR
-
-    TokenTreeView thenStatementNode = conditionNode.getChildren().get(4); // STMT_THEN
-    info("分析IF语句的THEN分支");
-    enterScope();
-    analyzeStatement(thenStatementNode);
-    exitScope();
-
-    if (conditionNode.getChildren().size() > 5 && "else".equals(conditionNode.getChildren().get(5).getValue())) {
-      if (conditionNode.getChildren().size() < 7) {
-        error("IF语句的ELSE分支结构不完整: " + conditionNode.getValue());
-        return;
-      }
-      TokenTreeView elseStatementNode = conditionNode.getChildren().get(6); // STMT_ELSE
-      info("分析IF语句的ELSE分支");
-      enterScope();
-      analyzeStatement(elseStatementNode);
-      exitScope();
-    }
-    // warn("analyzeIfStatement 尚未完全实现条件表达式分析");
-  }
-
   /**
    * 输出错误信息
    *
@@ -563,6 +564,10 @@ public class SemanticAnalyzer {
 
   public List<FunctionTableEntry> getFunctionTableEntries() {
     return new ArrayList<>(functionTable);
+  }
+
+  public List<MiddleTableEntry> getMiddleTableEntries() {
+    return new ArrayList<>(middleTableList); // 返回副本以防外部修改
   }
 
   @Getter

@@ -162,11 +162,11 @@
                   <content>
                     <TableView fx:id="middleTable" prefHeight="200.0" prefWidth="200.0">
                       <columns>
-                        <TableColumn fx:id="middleIdColumn" maxWidth="1.7976931348623157E308" minWidth="80.0" text="序号"/>
-                        <TableColumn fx:id="middleOpColumn" maxWidth="1.7976931348623157E308" minWidth="100.0" text="操作"/>
-                        <TableColumn fx:id="middleArg1Column" maxWidth="1.7976931348623157E308" minWidth="100.0" text="参数1"/>
-                        <TableColumn fx:id="middleArg2Column" maxWidth="1.7976931348623157E308" minWidth="100.0" text="参数2"/>
-                        <TableColumn fx:id="middleResultColumn" maxWidth="1.7976931348623157E308" minWidth="100.0" text="结果"/>
+                        <TableColumn fx:id="midIdColumn" maxWidth="1.7976931348623157E308" minWidth="80.0" text="序号"/>
+                        <TableColumn fx:id="midOpColumn" maxWidth="1.7976931348623157E308" minWidth="100.0" text="操作"/>
+                        <TableColumn fx:id="midArg1Column" maxWidth="1.7976931348623157E308" minWidth="100.0" text="参数1"/>
+                        <TableColumn fx:id="midArg2Column" maxWidth="1.7976931348623157E308" minWidth="100.0" text="参数2"/>
+                        <TableColumn fx:id="midResultColumn" maxWidth="1.7976931348623157E308" minWidth="100.0" text="结果"/>
                       </columns>
                       <columnResizePolicy>
                         <TableView fx:constant="CONSTRAINED_RESIZE_POLICY"/>
