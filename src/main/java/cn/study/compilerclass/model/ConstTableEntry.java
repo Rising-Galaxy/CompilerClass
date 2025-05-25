@@ -7,11 +7,13 @@ public class ConstTableEntry {
   private final SimpleStringProperty name;
   private final SimpleStringProperty type;
   private final SimpleStringProperty value;
+  private final SimpleStringProperty scope;
 
-  public ConstTableEntry(String name, String type, String value) {
+  public ConstTableEntry(String name, String type, String value, String scope) { // 修改构造函数
     this.name = new SimpleStringProperty(name);
     this.type = new SimpleStringProperty(type);
     this.value = new SimpleStringProperty(value);
+    this.scope = new SimpleStringProperty(scope);
   }
 
   public String getName() {
@@ -36,5 +38,13 @@ public class ConstTableEntry {
 
   public SimpleStringProperty valueProperty() {
     return value;
+  }
+
+  public String getScope() {
+    return scope.get();
+  }
+
+  public SimpleStringProperty scopeProperty() {
+    return scope;
   }
 }
