@@ -20,7 +20,7 @@ public enum NodeType {
   EXPRESSION("表达式"), BINARY_EXPR("二元表达式"), UNARY_EXPR("一元表达式"), PAREN_EXPR("括号表达式"), RELATIONAL_EXPR("关系表达式"), LOGIC_EXPR("逻辑表达式"), EQUALITY_EXPR("相等性表达式"), ADDITION_EXPR("加减表达式"), MULTIPLICATION_EXPR("乘除表达式"),
 
   // 基本元素
-  IDENTIFIER("标识符"), TYPE("类型"), VALUE("值"), LITERAL_BOOL("布尔字面量"), LITERAL_INT("整数字面量"), LITERAL_FLOAT("浮点字面量"), LITERAL_CHAR("字符字面量"),
+  IDENTIFIER("标识符"), TYPE("类型"), LITERAL_BOOL("布尔字面量"), LITERAL_INT("整数字面量"), LITERAL_FLOAT("浮点字面量"), LITERAL_CHAR("字符字面量"),
 
   // 操作符和符号
   OPERATOR("操作符"), SYMBOL("符号"), KEYWORD("关键字"),

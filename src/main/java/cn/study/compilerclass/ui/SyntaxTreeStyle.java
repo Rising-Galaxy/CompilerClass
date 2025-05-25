@@ -27,7 +27,7 @@ public class SyntaxTreeStyle {
       case DEFINITION, DECLARATION -> "declaration-node";
       case KEYWORD -> "keyword-node";
       case OPERATOR -> "operator-node";
-      case VALUE, LITERAL_BOOL, LITERAL_INT, LITERAL_FLOAT, LITERAL_CHAR -> "value-node";
+      case LITERAL_BOOL, LITERAL_INT, LITERAL_FLOAT, LITERAL_CHAR -> "value-node";
       case SYMBOL -> "symbol-node";
       case IDENTIFIER, TYPE -> "normal-node";
       case FUNCTION_CALL -> "function-call";

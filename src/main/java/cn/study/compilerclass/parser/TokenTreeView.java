@@ -19,28 +19,36 @@ public class TokenTreeView {
   private String description; // 节点描述：附加信息
   private boolean highlight; // 高亮显示
   private boolean folded; // 是否折叠子节点
+  private int row; // 行号
+  private int col; // 列号
 
-  public TokenTreeView(TokenTreeView parent, String value) {
+  public TokenTreeView(TokenTreeView parent, String value, int row, int col) {
+    this(parent, value, null, "", row, col);
+  }
+
+  public TokenTreeView(TokenTreeView parent, String value, NodeType nodeType, int row, int col) {
+    this(parent, value, nodeType, "", row, col);
+  }
+
+  public TokenTreeView(TokenTreeView parent, String value, NodeType nodeType, String description, int row, int col) {
     this.parent = parent;
     this.value = value;
     this.children = new ArrayList<>();
-    this.nodeType = null;
-    this.description = "";
+    this.description = description;
     this.highlight = false;
     this.folded = true;
-  }
-
-  /**
-   * 创建完整信息的节点
-   */
-  public TokenTreeView(TokenTreeView parent, String value, NodeType nodeType) {
-    this(parent, value);
     this.nodeType = nodeType;
+    this.description = description;
+    this.row = row;
+    this.col = col;
   }
 
-  public TokenTreeView(TokenTreeView parent, String value, NodeType nodeType, String description) {
-    this(parent, value, nodeType);
-    this.description = description;
+  public TokenTreeView(String value, NodeType nodeType, String description, int row, int col) {
+    this(null, value, nodeType, description, row, col);
+  }
+
+  public TokenTreeView(String value, NodeType nodeType, int row, int col) {
+    this(null, value, nodeType, "", row, col);
   }
 
   public void addChild(TokenTreeView child) {
