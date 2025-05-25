@@ -505,6 +505,87 @@ public class SemanticAnalyzer {
     // warn("analyzeWhileStatement 尚未完全实现条件表达式分析");
   }
 
+  private void analyzeFunctionDeclaration(TokenTreeView functionNode) {
+    // 分析函数声明
+    ArrayList<TokenTreeView> children = functionNode.getChildren();
+    String functionName = children.get(1).getValue();
+    String returnType = children.get(0).getValue();
+    
+    // 检查重复函数声明
+    if (functionTable.stream().anyMatch(f -> f.getName().equals(functionName))) {
+      error("函数 '" + functionName + "' 重复声明");
+      return;
+    }
+
+    ArrayList<String> paramTypeList = new ArrayList<>();
+    // 分析参数列表
+    if (children.size() > 2) {
+      for (TokenTreeView paramNode : children.get(2).getChildren()) {
+        if (paramNode.getNodeType() == NodeType.PARAM) {
+          String paramType = paramNode.getChildren().getFirst().getValue();
+          paramTypeList.add(paramType);
+        }
+      }
+    }
+    FunctionTableEntry entry = new FunctionTableEntry(functionName, returnType, paramTypeList);
+    functionTable.add(entry);
+    info("声明函数: " + entry);
+  }
+
+  private void analyzeFunctionCall(TokenTreeView callNode) {
+    String functionName = callNode.getChildren().getFirst().getValue();
+    FunctionTableEntry function = functionTable.stream()
+        .filter(f -> f.getName().equals(functionName))
+        .findFirst()
+        .orElse(null);
+
+    if (function == null) {
+      error("未声明的函数调用: " + functionName);
+      return;
+    }
+
+    List<TokenTreeView> actualParams = callNode.getChildren().subList(1, callNode.getChildren().size());
+    if (actualParams.size() != function.getParamCount()) {
+      error("函数 '" + functionName + "' 参数数量不匹配，期望 " + function.getParamCount() + " 实际 " + actualParams.size());
+    } else {
+      // 参数类型检查
+      for (int i = 0; i < actualParams.size(); i++) {
+        String actualType = analyzeExpression(actualParams.get(i));
+        String expectedType = function.getParamTypes().get(i);
+        if (!actualType.equals(expectedType)) {
+          error("参数类型不匹配，位置 " + (i+1) + " 期望 " + expectedType + " 实际 " + actualType);
+        }
+      }
+    }
+  }
+
+  private void analyzeDoWhileLoop(TokenTreeView doWhileNode) {
+    enterScope();
+    // 分析循环体
+    analyzeStatement(doWhileNode.getChildren().get(1));
+    exitScope();
+
+    // 分析条件表达式
+    String conditionType = analyzeExpression(doWhileNode.getChildren().get(3));
+    if (!"bool".equals(conditionType)) {
+      error("do-while条件表达式必须为布尔类型，实际类型: " + conditionType);
+    }
+  }
+
+  private String analyzeExpression(TokenTreeView exprNode) {
+
+  }
+
+  private String analyzeRelationalExpression(TokenTreeView exprNode) {
+    String leftType = analyzeExpression(exprNode.getChildren().get(0));
+    String rightType = analyzeExpression(exprNode.getChildren().get(2));
+    
+    if (!leftType.equals(rightType)) {
+      error("关系表达式类型不匹配: " + leftType + " 和 " + rightType);
+    }
+    return "bool";
+  }
+
   /**
    * 输出错误信息
    *

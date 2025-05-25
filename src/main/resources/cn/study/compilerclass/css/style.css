@@ -183,12 +183,12 @@
   -fx-font-weight: bold;
 }
 
-.tree-cell.args {
+.tree-cell.params {
   -fx-text-fill: #a0a0b0; /* 参数节点文本颜色 - 灰色 */
   -fx-font-weight: normal;
 }
 
-.tree-cell.args-list {
+.tree-cell.params-list {
   -fx-text-fill: #484866; /* 参数列表节点文本颜色 - 灰紫色 */
   -fx-font-weight: normal;
 }

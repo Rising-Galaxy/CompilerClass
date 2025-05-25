@@ -1,60 +1,56 @@
 package cn.study.compilerclass.model;
 
+import java.util.ArrayList;
 import javafx.beans.property.SimpleIntegerProperty;
 import javafx.beans.property.SimpleStringProperty;
+import lombok.Getter;
 
 public class FunctionTableEntry {
-    private final SimpleStringProperty name;
-    private final SimpleStringProperty returnType;
-    private final SimpleStringProperty parameters;
-    private final SimpleIntegerProperty line;
-    private final SimpleIntegerProperty callCount;
 
-    public FunctionTableEntry(String name, String returnType, String parameters, int line, int callCount) {
-        this.name = new SimpleStringProperty(name);
-        this.returnType = new SimpleStringProperty(returnType);
-        this.parameters = new SimpleStringProperty(parameters);
-        this.line = new SimpleIntegerProperty(line);
-        this.callCount = new SimpleIntegerProperty(callCount);
-    }
+  private final SimpleStringProperty name;
+  private final SimpleStringProperty returnType;
+  @Getter
+  private final ArrayList<String> paramTypes; // 参数类型列表
+  private final SimpleStringProperty listString; // 参数类型列表
+  private final SimpleIntegerProperty paramCount; // 参数个数
 
-    public String getName() {
-        return name.get();
-    }
+  public FunctionTableEntry(String name, String returnType, ArrayList<String> paramTypes) {
+    this.name = new SimpleStringProperty(name);
+    this.returnType = new SimpleStringProperty(returnType);
+    this.paramTypes = paramTypes;
+    this.listString = new SimpleStringProperty(String.join(", ", paramTypes));
+    this.paramCount = new SimpleIntegerProperty(paramTypes.size());
+  }
 
-    public SimpleStringProperty nameProperty() {
-        return name;
-    }
+  public String getListString() {
+    return listString.get();
+  }
 
-    public String getReturnType() {
-        return returnType.get();
-    }
+  public SimpleStringProperty listStringProperty() {
+    return listString;
+  }
 
-    public SimpleStringProperty returnTypeProperty() {
-        return returnType;
-    }
+  public String getName() {
+    return name.get();
+  }
 
-    public String getParameters() {
-        return parameters.get();
-    }
+  public SimpleStringProperty nameProperty() {
+    return name;
+  }
 
-    public SimpleStringProperty parametersProperty() {
-        return parameters;
-    }
+  public String getReturnType() {
+    return returnType.get();
+  }
 
-    public int getLine() {
-        return line.get();
-    }
+  public SimpleStringProperty returnTypeProperty() {
+    return returnType;
+  }
 
-    public SimpleIntegerProperty lineProperty() {
-        return line;
-    }
+  public int getParamCount() {
+    return paramCount.get();
+  }
 
-    public int getCallCount() {
-        return callCount.get();
-    }
-
-    public SimpleIntegerProperty callCountProperty() {
-        return callCount;
-    }
+  public SimpleIntegerProperty paramCountProperty() {
+    return paramCount;
+  }
 }

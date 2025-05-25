@@ -26,7 +26,7 @@ public enum NodeType {
   OPERATOR("操作符"), SYMBOL("符号"), KEYWORD("关键字"),
 
   // 函数调用
-  FUNCTION_CALL("函数调用"), ARG_LIST("参数列表"), ARG("参数"),
+  FUNCTION_CALL("函数调用"), PARAM_LIST("参数列表"), PARAM("参数"),
 
   // 错误
   ERROR("错误");

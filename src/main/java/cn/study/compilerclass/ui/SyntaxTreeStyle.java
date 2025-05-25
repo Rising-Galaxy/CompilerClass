@@ -1,7 +1,6 @@
 package cn.study.compilerclass.ui;
 
 import cn.study.compilerclass.model.NodeType;
-import javafx.scene.paint.Color;
 
 /**
  * 语法树显示样式
@@ -32,8 +31,8 @@ public class SyntaxTreeStyle {
       case SYMBOL -> "symbol-node";
       case IDENTIFIER, TYPE -> "normal-node";
       case FUNCTION_CALL -> "function-call";
-      case ARG -> "args";
-      case ARG_LIST -> "args-list";
+      case PARAM -> "params";
+      case PARAM_LIST -> "params-list";
     };
   }
 }

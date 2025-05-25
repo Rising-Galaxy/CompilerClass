@@ -3,7 +3,6 @@ package cn.study.compilerclass.parser;
 import cn.study.compilerclass.lexer.Token;
 import cn.study.compilerclass.lexer.TokenManager;
 import cn.study.compilerclass.model.NodeType;
-import cn.study.compilerclass.syntax.SemanticAnalyzer;
 import cn.study.compilerclass.ui.SyntaxTreeStyle;
 import cn.study.compilerclass.utils.OutInfo;
 import com.google.gson.Gson;
@@ -146,7 +145,7 @@ public class Parser {
           super.updateItem(item, empty);
 
           // 清除所有旧样式，确保没有样式残留
-          getStyleClass().removeAll("root-node", "middle-node", "normal-node", "error", "operator-node", "keyword-node", "value-node", "declaration-node", "symbol-node", "highlight", "default", "args-list", "args", "function-call");
+          getStyleClass().removeAll("root-node", "middle-node", "normal-node", "error", "operator-node", "keyword-node", "value-node", "declaration-node", "symbol-node", "highlight", "default", "params-list", "params", "function-call");
 
           if (empty || item == null) {
             setText(null);
@@ -1186,7 +1185,7 @@ public class Parser {
           consume(); // 消费左括号
 
           // 处理参数列表
-          TokenTreeView argsNode = new TokenTreeView(root, "函数参数", NodeType.ARG_LIST, "参数列表");
+          TokenTreeView argsNode = new TokenTreeView(root, "函数参数", NodeType.PARAM_LIST, "参数列表");
           root.addChild(argsNode);
 
           // 如果不是右括号，说明有参数
@@ -1195,7 +1194,7 @@ public class Parser {
             TokenTreeView argNode = expression();
             argNode.setParent(argsNode);
             argsNode.addChild(argNode);
-            argNode.setNodeType(NodeType.ARG);
+            argNode.setNodeType(NodeType.PARAM);
             argNode.setValue("参数");
 
             // 解析剩余参数
@@ -1206,7 +1205,7 @@ public class Parser {
               argNode = expression();
               argNode.setParent(argsNode);
               argsNode.addChild(argNode);
-              argNode.setNodeType(NodeType.ARG);
+              argNode.setNodeType(NodeType.PARAM);
               argNode.setValue("参数");
             }
           }
@@ -1468,7 +1467,7 @@ public class Parser {
 
   // 解析参数列表
   private TokenTreeView parameterList(boolean isDefinition) {
-    TokenTreeView node = new TokenTreeView(null, "参数列表", NodeType.ARG_LIST);
+    TokenTreeView node = new TokenTreeView(null, "参数列表", NodeType.PARAM_LIST);
     while (!isEOF() && !currentToken().getValue().equals(")")) {
       node.addChild(parameter(isDefinition));
       if (currentToken().getType() == tokenManager.getType(",")) {
@@ -1480,7 +1479,7 @@ public class Parser {
 
   // 解析单个参数
   private TokenTreeView parameter(boolean isDefinition) {
-    TokenTreeView node = new TokenTreeView(null, "参数", NodeType.ARG, "函数参数");
+    TokenTreeView node = new TokenTreeView(null, "参数", NodeType.PARAM, "函数参数");
 
     // 参数类型
     if (!isType(currentToken()) || currentToken().getValue().equals("void")) {

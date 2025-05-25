@@ -70,6 +70,16 @@ public class CompilerController {
   @FXML
   private TableColumn<VariableTableEntry, String> varValueColumn;
   @FXML
+  private TableView<FunctionTableEntry> functionTable;
+  @FXML
+  private TableColumn<FunctionTableEntry, String> funcNameColumn;
+  @FXML
+  private TableColumn<FunctionTableEntry, String> funcReturnTypeColumn;
+  @FXML
+  private TableColumn<FunctionTableEntry, String> funcParamTypeColumn;
+  @FXML
+  private TableColumn<FunctionTableEntry, Integer> funcParamCountColumn;
+  @FXML
   private TextArea codeArea;
   @FXML
   private TextArea outArea;
@@ -99,13 +109,11 @@ public class CompilerController {
   private Label fileLabel;
   private String statusLabel = "源程序";
   private int lineWidth = 2;
-  private Debouncer debouncer = new Debouncer(300);
+  private final Debouncer debouncer = new Debouncer(300);
   private String fileTooltip = "未命名文件";
   private Tooltip tooltip;
   @FXML
   private TabPane mainTabPane;
-  @FXML
-  private MenuItem exportSyntaxTreeItem;
 
   @FXML
   public void initialize() {
@@ -133,6 +141,7 @@ public class CompilerController {
     // 初始化表格列与数据模型的绑定
     setupConstTable();
     setupVariableTable();
+    setupFunctionTable();
 
     isModified.addListener((obs, oldVal, newVal) -> {
       if (newVal) {
@@ -183,6 +192,13 @@ public class CompilerController {
     varTypeColumn.setCellValueFactory(new PropertyValueFactory<>("type"));
     varScopeColumn.setCellValueFactory(new PropertyValueFactory<>("scope"));
     varValueColumn.setCellValueFactory(new PropertyValueFactory<>("value"));
+  }
+
+  private void setupFunctionTable() {
+    funcNameColumn.setCellValueFactory(new PropertyValueFactory<>("name"));
+    funcReturnTypeColumn.setCellValueFactory(new PropertyValueFactory<>("returnType"));
+    funcParamTypeColumn.setCellValueFactory(new PropertyValueFactory<>("listString"));
+    funcParamCountColumn.setCellValueFactory(new PropertyValueFactory<>("paramCount"));
   }
 
   @FXML
@@ -240,7 +256,7 @@ public class CompilerController {
       setVariableTableData(variableData);
 
       ObservableList<FunctionTableEntry> functionData = FXCollections.observableArrayList(semanticAnalyzer.getFunctionTableEntries());
-      // setFunctionTableData(functionData);
+      setFunctionTableData(functionData);
 
       if (!outInfo.isEmpty()) {
         outArea.setText(outInfo.toString());
@@ -263,6 +279,10 @@ public class CompilerController {
 
   public void setVariableTableData(ObservableList<VariableTableEntry> data) {
     variableTable.setItems(data);
+  }
+
+  public void setFunctionTableData(ObservableList<FunctionTableEntry> data) {
+    functionTable.setItems(data);
   }
 
   // 统一处理制表符替换
@@ -692,7 +712,7 @@ public class CompilerController {
 
     // 设置默认文件名
     fileChooser.setInitialFileName("ParserTree.txt");
-    
+
     // 新增路径记忆功能
     Preferences prefs = Preferences.userNodeForPackage(CompilerController.class);
     String lastUsedExportDirectory = prefs.get("lastUsedExportDirectory", System.getProperty("user.home"));
@@ -708,7 +728,7 @@ public class CompilerController {
       try (FileWriter writer = new FileWriter(file)) {
         // 保存当前目录到首选项
         prefs.put("lastUsedExportDirectory", file.getParent());
-        
+
         String treeText = buildTreeText(Parser.treeRoot, "", true);
         writer.write(treeText);
         showAlert(AlertType.INFORMATION, "语法树已成功导出至：" + file.getAbsolutePath());
