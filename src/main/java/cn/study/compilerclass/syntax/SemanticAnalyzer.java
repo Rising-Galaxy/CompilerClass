@@ -573,7 +573,7 @@ public class SemanticAnalyzer {
   }
 
   private String analyzeExpression(TokenTreeView exprNode) {
-
+    return "";
   }
 
   private String analyzeRelationalExpression(TokenTreeView exprNode) {

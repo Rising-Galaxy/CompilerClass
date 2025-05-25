@@ -134,6 +134,18 @@
                             </TableView>
                           </content>
                         </Tab>
+                        <Tab text="函数表">
+                          <content>
+                            <TableView fx:id="functionTable" prefHeight="200.0" prefWidth="200.0">
+                              <columns>
+                                <TableColumn fx:id="funcNameColumn" prefWidth="100.0" text="函数名"/>
+                                <TableColumn fx:id="funcReturnTypeColumn" prefWidth="100.0" text="返回类型"/>
+                                <TableColumn fx:id="funcParamTypeColumn" prefWidth="200.0" text="参数类型列表"/>
+                                <TableColumn fx:id="funcParamCountColumn" prefWidth="100.0" text="参数个数"/>
+                              </columns>
+                            </TableView>
+                          </content>
+                        </Tab>
                       </tabs>
                     </TabPane>
                   </content>

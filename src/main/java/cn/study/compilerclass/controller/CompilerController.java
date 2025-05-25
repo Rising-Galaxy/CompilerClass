@@ -751,7 +751,7 @@ public class CompilerController {
       indent += "│  ";
     }
 
-    sb.append(node.getValue()).append("\n");
+    sb.append(node.getDisplayText()).append("\n");
 
     List<TokenTreeView> children = node.getChildren();
     for (int i = 0; i < children.size(); i++) {
