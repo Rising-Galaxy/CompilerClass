@@ -53,6 +53,8 @@
             <MenuItem mnemonicParsing="false" onAction="#handleLexicalAnalysis" text="词法分析"/>
             <MenuItem mnemonicParsing="false" onAction="#handleSyntaxAnalysis" text="语法分析"/>
             <MenuItem mnemonicParsing="false" onAction="#handleSemanticAnalysis" text="语义分析"/>
+            <SeparatorMenuItem mnemonicParsing="false"/>
+            <MenuItem fx:id="exportSyntaxTreeItem" mnemonicParsing="false" onAction="#handleExportSyntaxTree" text="导出语法树..."/>
           </items>
         </Menu>
         <Menu mnemonicParsing="false" text="帮助">
@@ -115,18 +117,19 @@
                                 <TableColumn fx:id="varNameColumn" prefWidth="100.0" text="变量名"/>
                                 <TableColumn fx:id="varTypeColumn" prefWidth="100.0" text="类型"/>
                                 <TableColumn fx:id="varScopeColumn" prefWidth="100.0" text="作用域"/>
-                                <TableColumn fx:id="varInitColumn" prefWidth="100.0" text="值"/>
+                                <TableColumn fx:id="varValueColumn" prefWidth="100.0" text="值"/>
                               </columns>
                             </TableView>
                           </content>
                         </Tab>
                         <Tab text="常量表">
                           <content>
-                            <TableView fx:id="symbolTable" prefHeight="200.0" prefWidth="200.0">
+                            <TableView fx:id="constTable" prefHeight="200.0" prefWidth="200.0">
                               <columns>
-                                <TableColumn fx:id="symbolNameColumn" prefWidth="100.0" text="变量名"/>
-                                <TableColumn fx:id="symbolTypeColumn" prefWidth="100.0" text="类型"/>
-                                <TableColumn fx:id="symbolInfoColumn" prefWidth="100.0" text="值"/>
+                                <TableColumn fx:id="constNameColumn" prefWidth="100.0" text="变量名"/>
+                                <TableColumn fx:id="constTypeColumn" prefWidth="100.0" text="类型"/>
+                                <TableColumn fx:id="constScopeColumn" prefWidth="100.0" text="作用域"/>
+                                <TableColumn fx:id="constValueColumn" prefWidth="100.0" text="值"/>
                               </columns>
                             </TableView>
                           </content>
