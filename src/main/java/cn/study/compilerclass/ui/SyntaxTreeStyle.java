@@ -22,12 +22,12 @@ public class SyntaxTreeStyle {
       case ERROR -> "error";
       case PROGRAM -> "root-node";
       case FUNCTION, BLOCK, STATEMENT, ASSIGNMENT_STMT, IF_STMT, WHILE_STMT, DO_WHILE_STMT, RETURN_STMT, EXPRESSION,
-           BINARY_EXPR, UNARY_EXPR, PAREN_EXPR, LOGICAL_EXPR, RELATIONAL_EXPR, EQUALITY_EXPR, ARITHMETIC_EXPR ->
-          "middle-node";
+           BINARY_EXPR, UNARY_EXPR, PAREN_EXPR, RELATIONAL_EXPR, LOGIC_EXPR, EQUALITY_EXPR, ADDITION_EXPR,
+           MULTIPLICATION_EXPR -> "middle-node";
       case DEFINITION, DECLARATION -> "declaration-node";
       case KEYWORD -> "keyword-node";
       case OPERATOR -> "operator-node";
-      case VALUE, LITERAL_BOOL, LITERAL_INT, LITERAL_FLOAT, LITERAL_STRING -> "value-node";
+      case VALUE, LITERAL_BOOL, LITERAL_INT, LITERAL_FLOAT, LITERAL_CHAR -> "value-node";
       case SYMBOL -> "symbol-node";
       case IDENTIFIER, TYPE -> "normal-node";
       case FUNCTION_CALL -> "function-call";

@@ -195,7 +195,7 @@ public class SemanticAnalyzer {
   private void analyzeStatement(TokenTreeView statementNode) {
     switch (statementNode.getNodeType()) {
       case DEFINITION -> analyzeDefinition(statementNode);
-      case ASSIGNMENT_STMT -> analyzeAssignmentStatement(statementNode);
+      // case ASSIGNMENT_STMT -> analyzeAssignmentStatement(statementNode);
       // case IF_STMT -> analyzeIfStatement(statementNode);
       // case WHILE_STMT -> analyzeWhileStatement(statementNode);
       default ->
@@ -221,14 +221,14 @@ public class SemanticAnalyzer {
 
     String currentScopePath = getCurrentScopePath(); // 获取当前作用域用于查找
 
-    // 1. 检查左侧是否为常量
+    // 检查左侧是否为常量
     ConstTableEntry constEntry = findConst(variableName, currentScopePath);
     if (constEntry != null) {
       error("不能给常量 '" + variableName + "' 赋值");
       return; // 常量不能被赋值
     }
 
-    // 2. 检查变量是否已声明 (先声明后使用)
+    // 检查变量是否已声明 (先声明后使用)
     VariableTableEntry varEntry = findVariable(variableName, currentScopePath);
     if (varEntry == null) {
       error("变量 '" + variableName + "' 在赋值前未声明");
@@ -237,31 +237,20 @@ public class SemanticAnalyzer {
 
     // 标记变量为已使用
     usedVariables.add(varEntry);
-    info("变量 '" + variableName + "' 在作用域 '" + varEntry.getScope() + "' 中被赋值 (使用)");
 
-    // 3. (后续) 分析右侧表达式并进行类型检查
-    // String rightValueType = analyzeExpression(rightOperandNode);
-    // if (!varEntry.getType().equals(rightValueType)) {
-    //   error("类型不匹配：无法将类型 '" + rightValueType + "' 赋值给类型为 '" + varEntry.getType() + "' 的变量 '" + variableName + "'");
-    // }
-    // 暂时只记录赋值操作
-    // varEntry.setValue(analyzeExpression(rightOperandNode)); // 假设 analyzeExpression 返回值的字符串形式
-
-    // 简单地将右操作数的值（如果是字面量）或标识符记录下来，实际中需要表达式求值
-    String assignedValue = rightOperandNode.getValue(); // 这只是一个占位符，实际需要更复杂的表达式分析
-    if (rightOperandNode.getNodeType() == NodeType.IDENTIFIER) {
-      // 如果右边也是一个变量，也需要检查它是否已声明，并标记为使用
-      VariableTableEntry rightVarEntry = findVariable(assignedValue, currentScopePath);
-      if (rightVarEntry == null) {
-        error("赋值语句右侧变量 '" + assignedValue + "' 未声明");
-      } else {
-        usedVariables.add(rightVarEntry);
-        info("变量 '" + assignedValue + "' 在作用域 '" + rightVarEntry.getScope() + "' 中作为右值被使用");
-      }
+    // 分析右侧表达式并进行类型检查
+    String rightValueType = analyzeExpression(rightOperandNode);
+    if (!varEntry.getType().equals(rightValueType)) {
+      error("类型不匹配：无法将类型 '" + rightValueType + "' 赋值给类型为 '" + varEntry.getType() + "' 的变量 '" + variableName + "'");
     }
-    // 更新变量表中的值 (可选，取决于是否追踪运行时值)
-    // varEntry.setValue(assignedValue); // VariableTableEntry 没有直接的 setValue 方法，需要修改或通过属性
-    info("变量 '" + variableName + "' 被赋予新值 (右侧: " + assignedValue + ")");
+  }
+
+  // 分析表达式并返回表达式的类型
+  private String analyzeExpression(TokenTreeView expressionNode) {
+    switch (expressionNode.getNodeType()) {
+
+    }
+    return "未知类型"; // 示例返回类型，实际需要根据表达式的结构进行分析
   }
 
   // 作用域管理方法
@@ -418,55 +407,6 @@ public class SemanticAnalyzer {
     // warn("analyzeIfStatement 尚未完全实现条件表达式分析");
   }
 
-  private void analyzeWhileStatement(TokenTreeView whileNode) {
-    info("分析WHILE语句: " + whileNode.getValue());
-    // WHILE_STMT -> while ( EXPR ) STMT
-    // 假设子节点结构: 0: 'while', 1: '(', 2: EXPR, 3: ')', 4: STMT_BODY
-
-    if (whileNode.getChildren().size() < 5) {
-      error("WHILE语句结构不完整: " + whileNode.getValue());
-      return;
-    }
-
-    TokenTreeView conditionNode = whileNode.getChildren().get(2); // EXPR
-    // analyzeExpression(conditionNode); // TODO: 实现表达式分析和类型检查，确保其为布尔类型
-    info("WHILE 条件: " + conditionNode.getValue());
-
-    TokenTreeView bodyStatementNode = whileNode.getChildren().get(4); // STMT_BODY
-    info("分析WHILE语句的循环体");
-    enterScope(); // 循环体有自己的作用域
-    analyzeStatement(bodyStatementNode);
-    exitScope();
-    // warn("analyzeWhileStatement 尚未完全实现条件表达式分析");
-  }
-
-  private void analyzeFunctionDeclaration(TokenTreeView functionNode) {
-    // 分析函数声明
-    ArrayList<TokenTreeView> children = functionNode.getChildren();
-    String functionName = children.get(1).getValue();
-    String returnType = children.get(0).getValue();
-
-    // 检查重复函数声明
-    if (functionTable.stream().anyMatch(f -> f.getName().equals(functionName))) {
-      error("函数 '" + functionName + "' 重复声明");
-      return;
-    }
-
-    ArrayList<String> paramTypeList = new ArrayList<>();
-    // 分析参数列表
-    if (children.size() > 2) {
-      for (TokenTreeView paramNode : children.get(2).getChildren()) {
-        if (paramNode.getNodeType() == NodeType.PARAM) {
-          String paramType = paramNode.getChildren().getFirst().getValue();
-          paramTypeList.add(paramType);
-        }
-      }
-    }
-    FunctionTableEntry entry = new FunctionTableEntry(functionName, returnType, paramTypeList);
-    functionTable.add(entry);
-    info("声明函数: " + entry);
-  }
-
   /**
    * 输出错误信息
    *
@@ -484,60 +424,6 @@ public class SemanticAnalyzer {
    */
   private void info(String message) {
     outInfos.info(src, message);
-  }
-
-  private void analyzeFunctionCall(TokenTreeView callNode) {
-    String functionName = callNode.getChildren().getFirst().getValue();
-    FunctionTableEntry function = functionTable.stream()
-                                               .filter(f -> f.getName().equals(functionName))
-                                               .findFirst()
-                                               .orElse(null);
-
-    if (function == null) {
-      error("未声明的函数调用: " + functionName);
-      return;
-    }
-
-    List<TokenTreeView> actualParams = callNode.getChildren().subList(1, callNode.getChildren().size());
-    if (actualParams.size() != function.getParamCount()) {
-      error("函数 '" + functionName + "' 参数数量不匹配，期望 " + function.getParamCount() + " 实际 " + actualParams.size());
-    } else {
-      // 参数类型检查
-      for (int i = 0; i < actualParams.size(); i++) {
-        String actualType = analyzeExpression(actualParams.get(i));
-        String expectedType = function.getParamTypes().get(i);
-        if (!actualType.equals(expectedType)) {
-          error("参数类型不匹配，位置 " + (i + 1) + " 期望 " + expectedType + " 实际 " + actualType);
-        }
-      }
-    }
-  }
-
-  private String analyzeExpression(TokenTreeView exprNode) {
-    return "";
-  }
-
-  private void analyzeDoWhileLoop(TokenTreeView doWhileNode) {
-    enterScope();
-    // 分析循环体
-    analyzeStatement(doWhileNode.getChildren().get(1));
-    exitScope();
-
-    // 分析条件表达式
-    String conditionType = analyzeExpression(doWhileNode.getChildren().get(3));
-    if (!"bool".equals(conditionType)) {
-      error("do-while条件表达式必须为布尔类型，实际类型: " + conditionType);
-    }
-  }
-
-  private String analyzeRelationalExpression(TokenTreeView exprNode) {
-    String leftType = analyzeExpression(exprNode.getChildren().get(0));
-    String rightType = analyzeExpression(exprNode.getChildren().get(2));
-
-    if (!leftType.equals(rightType)) {
-      error("关系表达式类型不匹配: " + leftType + " 和 " + rightType);
-    }
-    return "bool";
   }
 
   /**

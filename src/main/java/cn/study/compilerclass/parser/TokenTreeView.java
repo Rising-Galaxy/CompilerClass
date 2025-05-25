@@ -34,40 +34,12 @@ public class TokenTreeView {
    * 创建完整信息的节点
    */
   public TokenTreeView(TokenTreeView parent, String value, NodeType nodeType) {
-    this.parent = parent;
-    this.value = value;
-    this.children = new ArrayList<>();
+    this(parent, value);
     this.nodeType = nodeType;
-    this.description = "";
-    this.highlight = false;
-    this.folded = true;
-  }
-  
-  /**
-   * 兼容旧版本的字符串类型构造函数
-   */
-  public TokenTreeView(TokenTreeView parent, String value, String nodeTypeStr) {
-    this.parent = parent;
-    this.value = value;
-    this.children = new ArrayList<>();
-    try {
-      this.nodeType = NodeType.valueOf(nodeTypeStr);
-    } catch (IllegalArgumentException e) {
-      // 如果无法转换为枚举，则保持为null
-      this.nodeType = null;
-    }
-    this.description = "";
-    this.highlight = false;
-    this.folded = true;
   }
 
   public TokenTreeView(TokenTreeView parent, String value, NodeType nodeType, String description) {
     this(parent, value, nodeType);
-    this.description = description;
-  }
-  
-  public TokenTreeView(TokenTreeView parent, String value, String nodeTypeStr, String description) {
-    this(parent, value, nodeTypeStr);
     this.description = description;
   }
 
@@ -77,15 +49,6 @@ public class TokenTreeView {
 
   public void addChildren(TokenTreeView... children) {
     this.children.addAll(Arrays.asList(children));
-  }
-
-  /**
-   * 添加子节点
-   *
-   * @param value 子节点的值
-   */
-  public void addChild(String value) {
-    children.add(new TokenTreeView(this, value));
   }
 
   /**
@@ -108,24 +71,11 @@ public class TokenTreeView {
   /**
    * 设置节点类型和描述
    *
-   * @param nodeType 节点类型
+   * @param nodeType    节点类型
    * @param description 节点描述
    */
   public void setNodeInfo(NodeType nodeType, String description) {
     this.nodeType = nodeType;
-    this.description = description;
-  }
-  
-  /**
-   * 兼容旧版本的字符串类型设置方法
-   */
-  public void setNodeInfo(String nodeTypeStr, String description) {
-    try {
-      this.nodeType = NodeType.valueOf(nodeTypeStr);
-    } catch (IllegalArgumentException e) {
-      // 如果无法转换为枚举，则保持为null
-      this.nodeType = null;
-    }
     this.description = description;
   }
 

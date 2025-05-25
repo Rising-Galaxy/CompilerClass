@@ -264,7 +264,7 @@ public class Parser {
    * @return 程序的语法树
    */
   private TokenTreeView program() {
-    TokenTreeView program = new TokenTreeView(null, "程序", "PROGRAM", "入口点");
+    TokenTreeView program = new TokenTreeView(null, "程序", NodeType.PROGRAM, "入口点");
     program.setFolded(false);
 
     while (!isEOF()) {
@@ -329,7 +329,7 @@ public class Parser {
 
   // 代码块解析
   private TokenTreeView block() {
-    TokenTreeView node = new TokenTreeView(null, "代码块", "BLOCK");
+    TokenTreeView node = new TokenTreeView(null, "代码块", NodeType.BLOCK);
 
     if (currentToken().getType() != tokenManager.getType("{")) {
       error("缺少 '{'");
@@ -408,7 +408,7 @@ public class Parser {
 
   // 解析return语句
   private TokenTreeView returnStatement() {
-    TokenTreeView node = new TokenTreeView(null, "返回语句", NodeType.STATEMENT, "函数返回语句");
+    TokenTreeView node = new TokenTreeView(null, "返回语句", NodeType.RETURN_STMT, "函数返回语句");
 
     // return关键字
     TokenTreeView returnNode = new TokenTreeView(node, "return", NodeType.KEYWORD, "return关键字");
@@ -419,7 +419,7 @@ public class Parser {
     if (currentToken().getType() != tokenManager.getType(";")) {
       TokenTreeView expr = expression();
       expr.setParent(node);
-      expr.setNodeInfo("EXPRESSION", "返回值表达式");
+      expr.setDescription("返回值表达式");
       node.addChild(expr);
     }
 
@@ -670,7 +670,7 @@ public class Parser {
       case VARIABLE -> variableDefinition();
       default -> {
         error(String.format("[r: %d, c: %d]-未知的声明类型", currentToken().getLine(), currentToken().getColumn()));
-        yield new TokenTreeView(null, "未知声明", "ERROR");
+        yield new TokenTreeView(null, "未知声明", NodeType.ERROR);
       }
     };
   }
@@ -684,11 +684,11 @@ public class Parser {
    */
   private TokenTreeView variableDefinition() {
     // 创建一个父节点来包含所有变量定义
-    TokenTreeView node = new TokenTreeView(null, "变量定义", "DEFINITION", "列表");
+    TokenTreeView node = new TokenTreeView(null, "变量定义", NodeType.DEFINITION, "列表");
 
     // 类型
     String typeValue = currentToken().getValue();
-    TokenTreeView typeNode = new TokenTreeView(node, typeValue, "TYPE", "变量定义类型");
+    TokenTreeView typeNode = new TokenTreeView(node, typeValue, NodeType.TYPE, "变量定义类型");
     node.addChild(typeNode);
     consume();
 
@@ -833,28 +833,26 @@ public class Parser {
   }
 
   private TokenTreeView assignmentStatement() {
-    TokenTreeView node = new TokenTreeView(null, "赋值语句", "STATEMENT");
-    node.setNodeInfo("STATEMENT", "变量赋值");
+    TokenTreeView node = new TokenTreeView(null, "赋值语句", NodeType.ASSIGNMENT_STMT);
 
     // 标识符
     String identName = currentToken().getValue();
-    TokenTreeView idNode = new TokenTreeView(node, identName, "IDENTIFIER");
-    idNode.setNodeInfo("IDENTIFIER", "被赋值的变量");
+    TokenTreeView idNode = new TokenTreeView(node, identName, NodeType.IDENTIFIER, "被赋值的变量");
     node.addChild(idNode);
     consume();
 
     // 赋值操作符
     String operator = currentToken().getValue();
-    TokenTreeView assignNode = new TokenTreeView(node, operator, "OPERATOR");
+    TokenTreeView assignNode = new TokenTreeView(node, operator, NodeType.OPERATOR);
 
     // 根据不同的赋值运算符设置不同的描述
     switch (operator) {
-      case "=" -> assignNode.setNodeInfo("OPERATOR", "赋值操作符");
-      case "+=" -> assignNode.setNodeInfo("OPERATOR", "加法赋值操作符");
-      case "-=" -> assignNode.setNodeInfo("OPERATOR", "减法赋值操作符");
-      case "*=" -> assignNode.setNodeInfo("OPERATOR", "乘法赋值操作符");
-      case "/=" -> assignNode.setNodeInfo("OPERATOR", "除法赋值操作符");
-      case "%=" -> assignNode.setNodeInfo("OPERATOR", "取模赋值操作符");
+      case "=" -> assignNode.setDescription("赋值操作符");
+      case "+=" -> assignNode.setDescription("加法赋值操作符");
+      case "-=" -> assignNode.setDescription("减法赋值操作符");
+      case "*=" -> assignNode.setDescription("乘法赋值操作符");
+      case "/=" -> assignNode.setDescription("除法赋值操作符");
+      case "%=" -> assignNode.setDescription("取模赋值操作符");
     }
 
     node.addChild(assignNode);
@@ -863,12 +861,12 @@ public class Parser {
     // 表达式
     TokenTreeView exprNode = expression();
     exprNode.setParent(node);
-    exprNode.setNodeInfo("EXPRESSION", "表达式值");
+    exprNode.setDescription("将赋予的值");
     node.addChild(exprNode);
 
     // 分号
     if (currentToken().getType() != tokenManager.getType(";")) {
-      error(String.format("[r: %d, c: %d]-赋值后缺少';'", currentToken().getLine(), currentToken().getColumn()));
+      error(String.format("[r: %d, c: %d]-赋值语句后缺少';'", currentToken().getLine(), currentToken().getColumn()));
     }
     consume();
 
@@ -884,18 +882,16 @@ public class Parser {
     return booleanExpression();
   }
 
-  // 解析布尔表达式
+  // 逻辑或表达式
   private TokenTreeView booleanExpression() {
     TokenTreeView node = booleanTerm();
     while (!isEOF() && currentToken().getType() == tokenManager.getType("||")) {
       String opValue = currentToken().getValue();
-      TokenTreeView root = new TokenTreeView(null, "逻辑表达式", "EXPRESSION");
-      root.setNodeInfo("EXPRESSION", "逻辑或运算");
+      TokenTreeView root = new TokenTreeView(null, "逻辑表达式", NodeType.LOGIC_EXPR, "逻辑或运算");
       node.setParent(root);
       root.addChild(node);
 
-      TokenTreeView opNode = new TokenTreeView(root, opValue, "OPERATOR");
-      opNode.setNodeInfo("OPERATOR", "逻辑或运算符");
+      TokenTreeView opNode = new TokenTreeView(root, opValue, NodeType.OPERATOR, "逻辑或运算符");
       root.addChild(opNode);
       consume();
 
@@ -908,17 +904,16 @@ public class Parser {
     return node;
   }
 
+  // 逻辑与表达式
   private TokenTreeView booleanTerm() {
     TokenTreeView node = equalityExpression();
     while (!isEOF() && currentToken().getType() == tokenManager.getType("&&")) {
       String opValue = currentToken().getValue();
-      TokenTreeView root = new TokenTreeView(null, "逻辑项", "EXPRESSION");
-      root.setNodeInfo("EXPRESSION", "逻辑与运算");
+      TokenTreeView root = new TokenTreeView(null, "逻辑表达式", NodeType.LOGIC_EXPR, "逻辑与运算");
       node.setParent(root);
       root.addChild(node);
 
-      TokenTreeView opNode = new TokenTreeView(root, opValue, "OPERATOR");
-      opNode.setNodeInfo("OPERATOR", "逻辑与运算符");
+      TokenTreeView opNode = new TokenTreeView(root, opValue, NodeType.OPERATOR, "逻辑与运算符");
       root.addChild(opNode);
       consume();
 
@@ -931,17 +926,16 @@ public class Parser {
     return node;
   }
 
+  // 相等性表达式
   private TokenTreeView equalityExpression() {
     TokenTreeView node = relationalExpression();
     while (!isEOF() && (currentToken().getType() == tokenManager.getType("==") || currentToken().getType() == tokenManager.getType("!="))) {
       String opValue = currentToken().getValue();
-      TokenTreeView root = new TokenTreeView(null, "相等性表达式", "EXPRESSION");
-      root.setNodeInfo("EXPRESSION", "相等性比较");
+      TokenTreeView root = new TokenTreeView(null, "相等性表达式", NodeType.EQUALITY_EXPR, "相等性比较");
       node.setParent(root);
       root.addChild(node);
 
-      TokenTreeView opNode = new TokenTreeView(root, opValue, "OPERATOR");
-      opNode.setNodeInfo("OPERATOR", "相等性比较运算符");
+      TokenTreeView opNode = new TokenTreeView(root, opValue, NodeType.OPERATOR, "相等性比较运算符");
       root.addChild(opNode);
       consume();
 
@@ -954,21 +948,20 @@ public class Parser {
     return node;
   }
 
+  // 关系表达式
   private TokenTreeView relationalExpression() {
-    TokenTreeView node = additiveExpression();
+    TokenTreeView node = additionExpression();
     while (!isEOF() && (currentToken().getType() == tokenManager.getType("<") || currentToken().getType() == tokenManager.getType(">") || currentToken().getType() == tokenManager.getType("<=") || currentToken().getType() == tokenManager.getType(">="))) {
       String opValue = currentToken().getValue();
-      TokenTreeView root = new TokenTreeView(null, "关系表达式", "EXPRESSION");
-      root.setNodeInfo("EXPRESSION", "大小比较");
+      TokenTreeView root = new TokenTreeView(null, "关系表达式", NodeType.RELATIONAL_EXPR, "大小比较");
       node.setParent(root);
       root.addChild(node);
 
-      TokenTreeView opNode = new TokenTreeView(root, opValue, "OPERATOR");
-      opNode.setNodeInfo("OPERATOR", "关系比较运算符");
+      TokenTreeView opNode = new TokenTreeView(root, opValue, NodeType.OPERATOR, "关系运算符");
       root.addChild(opNode);
       consume();
 
-      TokenTreeView right = additiveExpression();
+      TokenTreeView right = additionExpression();
       right.setParent(root);
       root.addChild(right);
 
@@ -978,17 +971,15 @@ public class Parser {
   }
 
   // 算术表达式
-  private TokenTreeView additiveExpression() {
+  private TokenTreeView additionExpression() {
     TokenTreeView node = term();
     while (!isEOF() && (currentToken().getType() == tokenManager.getType("+") || currentToken().getType() == tokenManager.getType("-"))) {
       String opValue = currentToken().getValue();
-      TokenTreeView root = new TokenTreeView(null, "加减表达式", "EXPRESSION");
-      root.setNodeInfo("EXPRESSION", opValue.equals("+") ? "加法运算" : "减法运算");
+      TokenTreeView root = new TokenTreeView(null, "加减表达式", NodeType.ADDITION_EXPR, opValue.equals("+") ? "加法运算" : "减法运算");
       node.setParent(root);
       root.addChild(node);
 
-      TokenTreeView opNode = new TokenTreeView(root, opValue, "OPERATOR");
-      opNode.setNodeInfo("OPERATOR", opValue.equals("+") ? "加法运算符" : "减法运算符");
+      TokenTreeView opNode = new TokenTreeView(root, opValue, NodeType.OPERATOR, opValue.equals("+") ? "加法运算符" : "减法运算符");
       root.addChild(opNode);
       consume();
 
@@ -1000,6 +991,7 @@ public class Parser {
     return node;
   }
 
+  // 乘除表达式
   private TokenTreeView term() {
     TokenTreeView node = factor();
     while (!isEOF() && (currentToken().getType() == tokenManager.getType("*") || currentToken().getType() == tokenManager.getType("/") || currentToken().getType() == tokenManager.getType("%"))) {
@@ -1008,28 +1000,22 @@ public class Parser {
       int opCol = currentToken().getColumn();
 
       // 总是创建表达式根节点，即使缺少右操作数
-      TokenTreeView root = new TokenTreeView(null, "乘除表达式", "EXPRESSION");
+      TokenTreeView root = new TokenTreeView(null, "乘除表达式", NodeType.MULTIPLICATION_EXPR);
+      TokenTreeView opNode = new TokenTreeView(root, opValue, NodeType.OPERATOR);
       String opType;
       if (opValue.equals("*")) {
         opType = "乘法运算";
+        opNode.setDescription("乘法运算符");
       } else if (opValue.equals("/")) {
         opType = "除法运算";
+        opNode.setDescription("除法运算符");
       } else { // %
         opType = "取模运算";
+        opNode.setDescription("取模运算符");
       }
-      root.setNodeInfo("EXPRESSION", opType);
+      root.setDescription(opType);
       node.setParent(root);
-      root.addChild(node);
-
-      TokenTreeView opNode = new TokenTreeView(root, opValue, "OPERATOR");
-      if (opValue.equals("*")) {
-        opNode.setNodeInfo("OPERATOR", "乘法运算符");
-      } else if (opValue.equals("/")) {
-        opNode.setNodeInfo("OPERATOR", "除法运算符");
-      } else { // %
-        opNode.setNodeInfo("OPERATOR", "取模运算符");
-      }
-      root.addChild(opNode);
+      root.addChildren(node, opNode);
       consume();
 
       // 检查是否缺少第二个操作数
@@ -1037,8 +1023,7 @@ public class Parser {
                                                                                                                                                                                                                                                                                                                                                            .equals("True") && !currentToken().getValue()
                                                                                                                                                                                                                                                                                                                                                                                              .equals("False"))) {
         error(String.format("[r: %d, c: %d]-运算符'%s'后缺少操作数", opLine, opCol, opValue));
-        TokenTreeView errorNode = new TokenTreeView(root, "缺少操作数", "ERROR");
-        errorNode.setNodeInfo("ERROR", String.format("表达式不完整：第%d行第%d列的运算符'%s'后缺少操作数", opLine, opCol, opValue));
+        TokenTreeView errorNode = new TokenTreeView(root, "缺少操作数", NodeType.ERROR, String.format("表达式不完整：第%d行第%d列的运算符'%s'后缺少操作数", opLine, opCol, opValue));
         root.addChild(errorNode);
         // 语法树已正确构建，跳出循环
         node = root;
@@ -1053,6 +1038,7 @@ public class Parser {
     return node;
   }
 
+  // 因子
   private TokenTreeView factor() {
     TokenTreeView root;
     try {
@@ -1121,13 +1107,15 @@ public class Parser {
         String constValue = currentToken().getValue();
         root = new TokenTreeView(null, "常量值", NodeType.VALUE);
 
-        TokenTreeView node = new TokenTreeView(root, constValue, NodeType.VALUE);
+        TokenTreeView node = new TokenTreeView(root, constValue);
         if (currentToken().getType() == tokenManager.getType("_INTEGER_")) {
-          node.setDescription("整数字面量");
+          node.setNodeType(NodeType.LITERAL_INT);
         } else if (currentToken().getType() == tokenManager.getType("_FLOAT_")) {
-          node.setDescription("浮点数字面量");
+          node.setNodeType(NodeType.LITERAL_FLOAT);
+        } else if (currentToken().getType() == tokenManager.getType("_CHAR_")) {
+          node.setNodeType(NodeType.LITERAL_CHAR);
         } else {
-          node.setDescription("布尔字面量");
+          node.setNodeType(NodeType.LITERAL_BOOL);
         }
         root.addChild(node);
         consume();
@@ -1203,17 +1191,14 @@ public class Parser {
           }
         }
       } else if (isDelimiter(currentToken())) {
-        root = new TokenTreeView(null, "语法错误", "ERROR");
-        root.setNodeInfo("ERROR", "缺少表达式");
+        root = new TokenTreeView(null, "语法错误", NodeType.ERROR, "缺少表达式");
         error(String.format("[r: %d, c: %d]-缺少表达式", currentToken().getLine(), currentToken().getColumn()), false);
       } else {
-        root = new TokenTreeView(null, "语法错误", "ERROR");
-        root.setNodeInfo("ERROR", "无法识别的表达式");
+        root = new TokenTreeView(null, "语法错误", NodeType.ERROR, "无法识别的表达式");
         error(String.format("[r: %d, c: %d]-无法识别的表达式", currentToken().getLine(), currentToken().getColumn()), true);
       }
     } catch (Exception e) {
-      root = new TokenTreeView(null, "表达式解析错误", "ERROR");
-      root.setNodeInfo("ERROR", "解析过程中发生异常");
+      root = new TokenTreeView(null, "表达式解析错误", NodeType.ERROR, "解析过程中发生异常");
       // synchronize(); // 同步到下一个安全点
     }
     return root;
@@ -1340,7 +1325,7 @@ public class Parser {
       error(String.format("[r: %d, c: %d]-缺少函数返回类型", currentToken().getLine(), currentToken().getColumn()));
     }
     String typeValue = currentToken().getValue();
-    TokenTreeView typeNode = new TokenTreeView(node, typeValue, "TYPE", "返回值类型");
+    TokenTreeView typeNode = new TokenTreeView(node, typeValue, NodeType.TYPE, "返回值类型");
     node.addChild(typeNode);
     consume();
 
@@ -1349,7 +1334,7 @@ public class Parser {
       error(String.format("[r: %d, c: %d]-缺少函数名", currentToken().getLine(), currentToken().getColumn()));
     }
     String funcName = currentToken().getValue();
-    TokenTreeView funcNameNode = new TokenTreeView(node, funcName, "IDENTIFIER", "函数名");
+    TokenTreeView funcNameNode = new TokenTreeView(node, funcName, NodeType.IDENTIFIER, "函数名");
     node.addChild(funcNameNode);
     consume();
 
@@ -1389,7 +1374,7 @@ public class Parser {
       error(String.format("[r: %d, c: %d]-缺少函数返回类型", currentToken().getLine(), currentToken().getColumn()));
     }
     String typeValue = currentToken().getValue();
-    TokenTreeView typeNode = new TokenTreeView(node, typeValue, "TYPE", "返回值类型");
+    TokenTreeView typeNode = new TokenTreeView(node, typeValue, NodeType.TYPE, "返回值类型");
     node.addChild(typeNode);
     consume();
 
@@ -1398,7 +1383,7 @@ public class Parser {
       error(String.format("[r: %d, c: %d]-缺少函数名", currentToken().getLine(), currentToken().getColumn()));
     }
     String funcName = currentToken().getValue();
-    TokenTreeView funcNameNode = new TokenTreeView(node, funcName, "IDENTIFIER", "函数名");
+    TokenTreeView funcNameNode = new TokenTreeView(node, funcName, NodeType.IDENTIFIER, "函数名");
     node.addChild(funcNameNode);
     consume();
 
@@ -1446,7 +1431,7 @@ public class Parser {
       error(String.format("[r: %d, c: %d]-缺少参数类型或使用了无效的类型void", currentToken().getLine(), currentToken().getColumn()));
     }
     String typeValue = currentToken().getValue();
-    TokenTreeView typeNode = new TokenTreeView(node, typeValue, "TYPE", "参数类型");
+    TokenTreeView typeNode = new TokenTreeView(node, typeValue, NodeType.TYPE, "参数类型");
     node.addChild(typeNode);
     consume();
 
@@ -1454,7 +1439,7 @@ public class Parser {
     if (isIdentifier(currentToken())) {
       if (isDefinition) {
         String paramName = currentToken().getValue();
-        TokenTreeView paramNameNode = new TokenTreeView(node, paramName, "IDENTIFIER", "参数名");
+        TokenTreeView paramNameNode = new TokenTreeView(node, paramName, NodeType.IDENTIFIER, "参数名");
         node.addChild(paramNameNode);
       } else {
         // 如果是声明且存在参数名，给予警告
