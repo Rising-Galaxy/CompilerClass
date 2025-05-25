@@ -4,7 +4,7 @@ import cn.study.compilerclass.lexer.Lexer;
 import cn.study.compilerclass.lexer.Token;
 import cn.study.compilerclass.lexer.TokenView;
 import cn.study.compilerclass.model.FunctionTableEntry;
-import cn.study.compilerclass.model.SymbolTableEntry;
+import cn.study.compilerclass.model.ConstTableEntry;
 import cn.study.compilerclass.model.VariableTableEntry;
 import cn.study.compilerclass.parser.Parser;
 import cn.study.compilerclass.syntax.SemanticAnalyzer;
@@ -31,8 +31,6 @@ import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyCodeCombination;
 import javafx.scene.input.KeyCombination;
 import javafx.scene.input.KeyEvent;
-import javafx.scene.layout.HBox;
-import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
 import java.io.File;
 import java.io.IOException;
@@ -51,17 +49,17 @@ public class CompilerController {
   private SimpleBooleanProperty isModified = new SimpleBooleanProperty(false);
 
   @FXML
-  private TableView<SymbolTableEntry> symbolTable;
+  private TableView<ConstTableEntry> symbolTable;
   @FXML
-  private TableColumn<SymbolTableEntry, String> symbolNameColumn;
+  private TableColumn<ConstTableEntry, String> symbolNameColumn;
   @FXML
-  private TableColumn<SymbolTableEntry, String> symbolTypeColumn;
+  private TableColumn<ConstTableEntry, String> symbolTypeColumn;
   @FXML
-  private TableColumn<SymbolTableEntry, String> symbolScopeColumn;
+  private TableColumn<ConstTableEntry, String> symbolScopeColumn;
   @FXML
-  private TableColumn<SymbolTableEntry, Integer> symbolLineColumn;
+  private TableColumn<ConstTableEntry, Integer> symbolLineColumn;
   @FXML
-  private TableColumn<SymbolTableEntry, String> symbolInfoColumn;
+  private TableColumn<ConstTableEntry, String> symbolInfoColumn;
   @FXML
   private TableView<VariableTableEntry> variableTable;
   @FXML
@@ -255,7 +253,7 @@ public class CompilerController {
       semanticAnalyzer.analyze(treeRoot);
 
       // 获取分析结果并转换为ObservableList
-      ObservableList<SymbolTableEntry> symbolData = FXCollections.observableArrayList(semanticAnalyzer.getSymbolTableEntries());
+      ObservableList<ConstTableEntry> symbolData = FXCollections.observableArrayList(semanticAnalyzer.getConstTableEntries());
       setSymbolTableData(symbolData);
 
       ObservableList<VariableTableEntry> variableData = FXCollections.observableArrayList(semanticAnalyzer.getVariableTableEntries());
@@ -279,7 +277,7 @@ public class CompilerController {
   }
 
   // 添加方法用于从编译器控制器接收语义分析数据
-  public void setSymbolTableData(ObservableList<SymbolTableEntry> data) {
+  public void setSymbolTableData(ObservableList<ConstTableEntry> data) {
     symbolTable.setItems(data);
   }
 

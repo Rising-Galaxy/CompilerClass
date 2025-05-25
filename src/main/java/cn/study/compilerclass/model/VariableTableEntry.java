@@ -7,15 +7,13 @@ public class VariableTableEntry {
     private final SimpleStringProperty name;
     private final SimpleStringProperty type;
     private final SimpleStringProperty scope;
-    private final SimpleStringProperty initialValue;
-    private final SimpleBooleanProperty used;
+    private final SimpleStringProperty value;
 
-    public VariableTableEntry(String name, String type, String scope, String initialValue, boolean used) {
+    public VariableTableEntry(String name, String type, String scope, String value) {
         this.name = new SimpleStringProperty(name);
         this.type = new SimpleStringProperty(type);
         this.scope = new SimpleStringProperty(scope);
-        this.initialValue = new SimpleStringProperty(initialValue);
-        this.used = new SimpleBooleanProperty(used);
+        this.value = new SimpleStringProperty(value);
     }
 
     public String getName() {
@@ -42,19 +40,11 @@ public class VariableTableEntry {
         return scope;
     }
 
-    public String getInitialValue() {
-        return initialValue.get();
+    public String getValue() {
+        return value.get();
     }
 
-    public SimpleStringProperty initialValueProperty() {
-        return initialValue;
-    }
-
-    public boolean getUsed() {
-        return used.get();
-    }
-
-    public SimpleBooleanProperty usedProperty() {
-        return used;
+    public SimpleStringProperty valueProperty() {
+        return value;
     }
 }

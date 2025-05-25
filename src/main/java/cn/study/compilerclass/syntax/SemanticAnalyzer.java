@@ -1,18 +1,18 @@
 package cn.study.compilerclass.syntax;
 
+import cn.study.compilerclass.model.ConstTableEntry;
 import cn.study.compilerclass.model.FunctionTableEntry;
 import cn.study.compilerclass.model.NodeType;
-import cn.study.compilerclass.model.SymbolTableEntry;
 import cn.study.compilerclass.model.VariableTableEntry;
 import cn.study.compilerclass.parser.TokenTreeView;
 import cn.study.compilerclass.utils.OutInfo;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Stack;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.Stack;
+import java.util.stream.Collectors;
 import lombok.Getter;
-import lombok.Setter;
 
 /**
  * 语义分析器
@@ -24,14 +24,18 @@ public class SemanticAnalyzer {
 
   private final OutInfo outInfos;
   private final String src = "语义分析";
-  private final Stack<Scope> scopeStack;        // 作用域栈
-  private final Map<String, FunctionSymbol> functionSymbols; // 函数符号表
   private final List<String> errors;                  // 错误信息列表
   private final List<String> warnings;                // 警告信息列表
-  private int nextScopeId = 0; // 下一个作用域ID
 
-  // 当前是否在函数内部（用于控制作用域）
-  private boolean inFunction = false;
+  private final List<VariableTableEntry> variableTable; // 变量表
+  private final List<ConstTableEntry> constTable;     // 常量表
+  private final List<FunctionTableEntry> functionTable; // 函数表
+
+  private final Stack<Integer> scopeStack;            // 作用域栈
+  private int nextScopeId;                            //下一个作用域的ID
+  private boolean mainFunctionFound;                  // 是否找到主函数
+  // 用于跟踪变量使用情况
+  private final Set<VariableTableEntry> usedVariables;
 
   /**
    * 构造函数
@@ -40,42 +44,15 @@ public class SemanticAnalyzer {
    */
   public SemanticAnalyzer(OutInfo outInfos) {
     this.outInfos = outInfos;
-    this.scopeStack = new Stack<>();
-    this.functionSymbols = new HashMap<>();
     this.errors = new ArrayList<>();
     this.warnings = new ArrayList<>();
-
-    // 初始化全局作用域
-    pushScope("全局");
-  }
-
-  /**
-   * 添加新的作用域到作用域栈
-   *
-   * @param name 作用域名称
-   */
-  private void pushScope(String name) {
-    Scope parent = scopeStack.isEmpty() ? null : scopeStack.peek();
-    Scope newScope = new Scope(name, parent, nextScopeId++);
-    scopeStack.push(newScope);
-  }
-
-  /**
-   * 离开当前作用域
-   */
-  private void popScope() {
-    if (!scopeStack.isEmpty()) {
-      scopeStack.pop();
-    }
-  }
-
-  /**
-   * 获取当前作用域
-   *
-   * @return 当前作用域
-   */
-  private Scope currentScope() {
-    return scopeStack.isEmpty() ? null : scopeStack.peek();
+    this.variableTable = new ArrayList<>();
+    this.constTable = new ArrayList<>();
+    this.functionTable = new ArrayList<>();
+    this.scopeStack = new Stack<>();
+    this.usedVariables = new HashSet<>();
+    this.nextScopeId = 0; // 初始化，全局作用域为0
+    this.mainFunctionFound = false;
   }
 
   /**
@@ -90,12 +67,26 @@ public class SemanticAnalyzer {
     }
 
     info("开始语义分析...");
+    // 初始化状态
+    errors.clear();
+    warnings.clear();
+    variableTable.clear();
+    constTable.clear();
+    // functionTable.clear();
+    scopeStack.clear();
+    usedVariables.clear();
+    nextScopeId = 1; // 全局作用域为0，子作用域从1开始
+    mainFunctionFound = false;
+
+    scopeStack.push(0); // 进入全局作用域
+
     try {
       // 从语法树根节点开始分析
-      analyzeNode(root);
+      analyzeProgram(root);
 
-      // 检查是否有未使用的变量
-      checkUnusedVariables();
+      if (!mainFunctionFound) {
+        error("程序中没有主函数");
+      }
 
       // 输出分析结果
       if (errors.isEmpty() && warnings.isEmpty()) {
@@ -110,611 +101,102 @@ public class SemanticAnalyzer {
       }
     } catch (Exception e) {
       error("语义分析过程中出现异常", e);
+    } finally {
+      scopeStack.pop(); // 退出全局作用域
     }
   }
 
-  /**
-   * 分析节点及其子节点
-   *
-   * @param node 当前节点
-   * @return 节点的类型信息
-   */
-  private TypeInfo analyzeNode(TokenTreeView node) {
-    if (node == null) {
-      return TypeInfo.UNKNOWN;
-    }
-
-    NodeType nodeType = node.getNodeType();
-    if (nodeType == null) {
-      return TypeInfo.UNKNOWN;
-    }
-
-    return switch (nodeType) {
-      case PROGRAM -> analyzeProgram(node);
-      case FUNCTION -> analyzeFunction(node);
-      case DEFINITION -> analyzeDefinition(node);
-      case STATEMENT, ASSIGNMENT_STMT, IF_STMT, WHILE_STMT, DO_WHILE_STMT, RETURN_STMT -> analyzeStatement(node);
-      case EXPRESSION, BINARY_EXPR, UNARY_EXPR, PAREN_EXPR, LOGICAL_EXPR,
-           RELATIONAL_EXPR, EQUALITY_EXPR, ARITHMETIC_EXPR -> analyzeExpression(node);
-      case BLOCK -> analyzeBlock(node);
-      case IDENTIFIER -> analyzeIdentifier(node);
-      case VALUE, LITERAL_BOOL, LITERAL_INT, LITERAL_FLOAT, LITERAL_STRING -> analyzeValue(node);
-      default -> {
-        // 对于其他类型节点，分析其子节点
-        for (TokenTreeView child : node.getChildren()) {
-          analyzeNode(child);
-        }
-        yield TypeInfo.UNKNOWN;
-      }
-    };
-  }
-
-  /**
-   * 分析程序节点
-   *
-   * @param node 程序节点
-   * @return 节点的类型信息
-   */
-  private TypeInfo analyzeProgram(TokenTreeView node) {
-    // 先分析全局定义
+  // 分析主程序
+  private void analyzeProgram(TokenTreeView node) {
     for (TokenTreeView child : node.getChildren()) {
-      if (child.getNodeType() == NodeType.DECLARATION) {
-        analyzeNode(child);
+      NodeType nodeType = child.getNodeType();
+      if (nodeType == null) {
+          warn("节点 " + child.getValue() + " 的 NodeType 为空，跳过处理。");
+          continue;
       }
-    }
-
-    // 再分析函数
-    for (TokenTreeView child : node.getChildren()) {
-      if (child.getNodeType() == NodeType.FUNCTION) {
-        analyzeNode(child);
-      }
-    }
-
-    return TypeInfo.VOID;
-  }
-
-  /**
-   * 分析函数节点
-   *
-   * @param node 函数节点
-   * @return 节点的类型信息
-   */
-  private TypeInfo analyzeFunction(TokenTreeView node) {
-    inFunction = true;
-    // 创建函数作用域
-    pushScope("函数");
-
-    TypeInfo returnType = TypeInfo.VOID; // 默认返回类型
-    String functionName = "main"; // 默认函数名
-
-    // 解析返回类型和函数名
-    for (TokenTreeView child : node.getChildren()) {
-      if ("TYPE".equals(child.getNodeType())) {
-        String typeName = child.getValue();
-        returnType = getTypeFromString(typeName);
-      } else if ("IDENTIFIER".equals(child.getNodeType())) {
-        functionName = child.getValue();
-      }
-    }
-
-    // 创建函数符号并添加到函数符号表
-    FunctionSymbol funcSymbol = new FunctionSymbol(functionName, returnType);
-    functionSymbols.put(functionName, funcSymbol);
-
-    // 分析函数体
-    for (TokenTreeView child : node.getChildren()) {
-      if ("BLOCK".equals(child.getNodeType())) {
-        analyzeNode(child);
-        break;
-      }
-    }
-
-    // 离开函数作用域
-    popScope();
-    inFunction = false;
-    return returnType;
-  }
-
-  /**
-   * 分析声明节点
-   *
-   * @param node 声明节点
-   * @return 节点的类型信息
-   */
-  private TypeInfo analyzeDefinition(TokenTreeView node) {
-    boolean isConst = false;
-    TypeInfo type = TypeInfo.UNKNOWN;
-    String varName = null;
-    boolean hasInitializer = false;
-    TypeInfo initializerType = TypeInfo.UNKNOWN;
-
-    // 检查是否是常量声明
-    if (node.getValue().startsWith("常量")) {
-      isConst = true;
-    }
-
-    // 分析声明的各个部分
-    for (TokenTreeView child : node.getChildren()) {
-      if ("KEYWORD".equals(child.getNodeType()) && "const".equals(child.getValue())) {
-        isConst = true;
-      } else if ("TYPE".equals(child.getNodeType())) {
-        type = getTypeFromString(child.getValue());
-      } else if ("IDENTIFIER".equals(child.getNodeType())) {
-        varName = child.getValue();
-      } else if ("OPERATOR".equals(child.getNodeType()) && "=".equals(child.getValue())) {
-        hasInitializer = true;
-      } else if ("EXPRESSION".equals(child.getNodeType()) || "VALUE".equals(child.getNodeType()) || "IDENTIFIER".equals(child.getNodeType())) {
-        initializerType = analyzeNode(child);
-      }
-    }
-
-    // 如果标识符已经找到
-    if (varName != null) {
-      // 检查变量是否已声明
-      if (isDeclared(varName)) {
-        error("变量 '" + varName + "' 重复声明");
-      } else {
-        // 如果是常量，必须有初始值
-        if (isConst && !hasInitializer) {
-          error("常量 '" + varName + "' 必须赋初值");
-        }
-
-        // 如果有初始值，检查类型是否匹配
-        if (hasInitializer && !isTypeCompatible(type, initializerType)) {
-          error("变量 '" + varName + "' 初始化类型不匹配: 期望 " + type + ", 得到 " + initializerType);
-        }
-
-        // 添加到符号表
-        Symbol symbol = new Symbol(varName, type, isConst);
-        symbol.setInitialized(hasInitializer);
-        symbol.setUsed(false);
-
-        // 将符号添加到当前作用域
-        currentScope().addSymbol(symbol);
-      }
-    }
-
-    return type;
-  }
-
-  /**
-   * 分析语句节点
-   *
-   * @param node 语句节点
-   * @return 节点的类型信息
-   */
-  private TypeInfo analyzeStatement(TokenTreeView node) {
-    if ("赋值语句".equals(node.getValue())) {
-      return analyzeAssignment(node);
-    } else if ("条件语句".equals(node.getValue())) {
-      return analyzeIfStatement(node);
-    } else {
-      // 处理其他语句类型，递归分析子节点
-      for (TokenTreeView child : node.getChildren()) {
-        analyzeNode(child);
-      }
-      return TypeInfo.VOID;
-    }
-  }
-
-  /**
-   * 分析赋值语句
-   *
-   * @param node 赋值语句节点
-   * @return 节点的类型信息
-   */
-  private TypeInfo analyzeAssignment(TokenTreeView node) {
-    String varName = null;
-    TypeInfo exprType = TypeInfo.UNKNOWN;
-
-    // 找出被赋值的变量和表达式
-    for (TokenTreeView child : node.getChildren()) {
-      if ("IDENTIFIER".equals(child.getNodeType())) {
-        varName = child.getValue();
-      } else if ("EXPRESSION".equals(child.getNodeType()) || "VALUE".equals(child.getNodeType()) || "IDENTIFIER".equals(child.getNodeType())) {
-        exprType = analyzeNode(child);
-      }
-    }
-
-    // 如果标识符已经找到
-    if (varName != null) {
-      // 检查变量是否已声明
-      Symbol symbol = getSymbol(varName);
-      if (symbol == null) {
-        error("变量 '" + varName + "' 未声明就使用");
-      } else {
-        // 检查是否是常量
-        if (symbol.isConstant()) {
-          error("常量 '" + varName + "' 不能被赋值");
-        }
-
-        // 检查类型是否匹配
-        if (!isTypeCompatible(symbol.getType(), exprType)) {
-          error("赋值类型不匹配: 变量 '" + varName + "' 的类型是 " + symbol.getType() + ", 但赋值表达式的类型是 " + exprType);
-        }
-
-        // 标记变量已初始化和使用
-        symbol.setInitialized(true);
-        symbol.setUsed(true);
-      }
-    }
-
-    return exprType;
-  }
-
-  /**
-   * 分析条件语句
-   *
-   * @param node 条件语句节点
-   * @return 节点的类型信息
-   */
-  private TypeInfo analyzeIfStatement(TokenTreeView node) {
-    // 找到条件表达式
-    for (TokenTreeView child : node.getChildren()) {
-      if ("EXPRESSION".equals(child.getNodeType())) {
-        TypeInfo conditionType = analyzeNode(child);
-        // 检查条件表达式是否是布尔类型
-        if (conditionType != TypeInfo.BOOL && conditionType != TypeInfo.UNKNOWN) {
-          error("if语句的条件表达式必须是布尔类型, 得到 " + conditionType);
-        }
-        break;
-      }
-    }
-
-    // 为if语句创建新的作用域
-    pushScope("if语句");
-
-    // 分析if和else的语句块
-    for (TokenTreeView child : node.getChildren()) {
-      if ("STATEMENT".equals(child.getNodeType()) || "BLOCK".equals(child.getNodeType())) {
-        analyzeNode(child);
-      }
-    }
-
-    // 离开if语句作用域
-    popScope();
-
-    return TypeInfo.VOID;
-  }
-
-  /**
-   * 分析块节点
-   *
-   * @param node 块节点
-   * @return 节点的类型信息
-   */
-  private TypeInfo analyzeBlock(TokenTreeView node) {
-    // 为代码块创建新的作用域
-    pushScope("代码块");
-    
-    for (TokenTreeView child : node.getChildren()) {
-      analyzeNode(child);
-    }
-    
-    // 离开代码块作用域
-    popScope();
-    
-    return TypeInfo.VOID;
-  }
-
-  /**
-   * 分析表达式节点
-   *
-   * @param node 表达式节点
-   * @return 节点的类型信息
-   */
-  private TypeInfo analyzeExpression(TokenTreeView node) {
-    // 检查是否为独立表达式语句（无副作用警告）
-    if (node.getParent() != null && "PROGRAM".equals(node.getParent()
-                                                         .getNodeType()) || (node.getParent() != null && "BLOCK".equals(node.getParent()
-                                                                                                                            .getNodeType()))) {
-      // 仅在表达式语句层面检查
-      if (!hasEffect(node)) {
-        int lineInfo = -1;
-        int colInfo = -1;
-
-        // 尝试从子节点获取位置信息
-        for (TokenTreeView child : node.getChildren()) {
-          if (child.getDescription() != null && child.getDescription().contains("第")) {
-            String[] parts = child.getDescription().split("第");
-            if (parts.length > 2) {
-              try {
-                String linePart = parts[1];
-                String colPart = parts[2];
-                lineInfo = Integer.parseInt(linePart.substring(0, linePart.indexOf("行")));
-                colInfo = Integer.parseInt(colPart.substring(0, colPart.indexOf("列")));
-              } catch (Exception e) {
-                // 解析失败，继续使用默认值
-              }
+      switch (nodeType) {
+        case DEFINITION -> analyzeDefinition(child); // 全局变量/常量定义
+        case FUNCTION -> {
+          // 主函数
+          if ("主函数".equals(child.getValue())) { // 假设主函数节点的值为 "主函数"
+            if (mainFunctionFound) {
+                error("程序中不能有多个主函数");
             }
+            mainFunctionFound = true;
+            analyzeMainFunction(child);
+          } else {
+            // analyzeFunctionDeclaration(child); // 其他函数声明
+            warn("发现非主函数定义：" + child.getValue() + "，暂不处理。");
           }
         }
-
-        String posInfo = lineInfo > 0 ? String.format("[r: %d, c: %d]", lineInfo, colInfo) : "";
-        warn(posInfo + "表达式没有任何副作用（仅计算但未使用结果）");
+        default -> warn("在 Program 级别发现未处理的节点类型: " + nodeType + " (Value: " + child.getValue() + ")");
       }
     }
-
-    String exprType = node.getValue();
-    List<TypeInfo> operandTypes = new ArrayList<>();
-    String operator = null;
-
-    for (TokenTreeView child : node.getChildren()) {
-      if ("OPERATOR".equals(child.getNodeType())) {
-        operator = child.getValue();
-      } else if (!"SYMBOL".equals(child.getNodeType())) {
-        // 收集非符号节点的类型
-        operandTypes.add(analyzeNode(child));
-      }
-    }
-
-    // 表达式类型推导
-    if (exprType.contains("逻辑") || (operator != null && (operator.equals("&&") || operator.equals("||")))) {
-      // 逻辑表达式
-      for (TypeInfo type : operandTypes) {
-        if (type != TypeInfo.BOOL && type != TypeInfo.UNKNOWN) {
-          error("逻辑表达式的操作数必须是布尔类型, 得到 " + type);
-        }
-      }
-      return TypeInfo.BOOL;
-    } else if (exprType.contains("相等性") || (operator != null && (operator.equals("==") || operator.equals("!=")))) {
-      // 相等性表达式
-      if (operandTypes.size() >= 2) {
-        if (!isTypeCompatible(operandTypes.get(0), operandTypes.get(1))) {
-          error("相等性比较的操作数类型不兼容: " + operandTypes.get(0) + " 和 " + operandTypes.get(1));
-        }
-      }
-      return TypeInfo.BOOL;
-    } else if (exprType.contains("关系") || (operator != null && (operator.equals("<") || operator.equals(">") || operator.equals("<=") || operator.equals(">=")))) {
-      // 关系表达式
-      if (operandTypes.size() >= 2) {
-        if (!isNumericType(operandTypes.get(0)) || !isNumericType(operandTypes.get(1))) {
-          error("关系比较的操作数必须是数值类型");
-        }
-      }
-      return TypeInfo.BOOL;
-    } else if (exprType.contains("加减") || exprType.contains("乘除") || (operator != null && (operator.equals("+") || operator.equals("-") || operator.equals("*") || operator.equals("/") || operator.equals("%")))) {
-      // 算术表达式
-      for (TypeInfo type : operandTypes) {
-        if (!isNumericType(type) && type != TypeInfo.UNKNOWN) {
-          error("算术表达式的操作数必须是数值类型, 得到 " + type);
-        }
-      }
-
-      // 类型升级规则: 如果有任何一个操作数是float，结果就是float，否则是int
-      boolean hasFloat = false;
-      for (TypeInfo type : operandTypes) {
-        if (type == TypeInfo.FLOAT) {
-          hasFloat = true;
-          break;
-        }
-      }
-      return hasFloat ? TypeInfo.FLOAT : TypeInfo.INT;
-    } else if (exprType.contains("一元") && operator != null && (operator.equals("+") || operator.equals("-"))) {
-      // 一元正负号表达式
-      if (!operandTypes.isEmpty() && !isNumericType(operandTypes.getFirst())) {
-        error("一元" + operator + "操作符的操作数必须是数值类型, 得到 " + operandTypes.getFirst());
-      }
-      // 保持操作数的类型
-      return !operandTypes.isEmpty() ? operandTypes.getFirst() : TypeInfo.INT;
-    } else if (exprType.contains("括号")) {
-      // 括号表达式，直接返回内部表达式的类型
-      return !operandTypes.isEmpty() ? operandTypes.getFirst() : TypeInfo.UNKNOWN;
-    }
-
-    // 默认遍历所有子节点
-    for (TokenTreeView child : node.getChildren()) {
-      analyzeNode(child);
-    }
-
-    // 如果无法确定类型，返回未知类型
-    return TypeInfo.UNKNOWN;
   }
 
-  /**
-   * 分析标识符节点
-   *
-   * @param node 标识符节点
-   * @return 节点的类型信息
-   */
-  private TypeInfo analyzeIdentifier(TokenTreeView node) {
-    String varName = node.getValue();
-    Symbol symbol = getSymbol(varName);
+  // 进入新的作用域
+  private void enterScope() {
+    scopeStack.push(nextScopeId++);
+  }
 
-    if (symbol == null) {
-      // 只有在子节点不包含自己的情况下报错（避免重复报错）
-      boolean isSelf = false;
-      for (TokenTreeView child : node.getChildren()) {
-        if (child.getValue().equals(varName)) {
-          isSelf = true;
-          break;
-        }
-      }
-
-      if (!isSelf) {
-        error("变量 '" + varName + "' 未声明就使用");
-      }
-      return TypeInfo.UNKNOWN;
+  // 退出当前作用域
+  private void exitScope() {
+    if (!scopeStack.isEmpty()) {
+      String exitedScopePath = getCurrentScopePath(false); // 获取即将退出的作用域路径
+      // 检查当前作用域内声明但未使用的变量
+      checkForUnusedVariables(exitedScopePath);
+      scopeStack.pop();
     } else {
-      // 标记变量已使用
-      symbol.setUsed(true);
-
-      // 检查变量是否初始化
-      if (!symbol.isInitialized()) {
-        error("变量 '" + varName + "' 在初始化前被使用");
-      }
-
-      return symbol.getType();
+      error("尝试退出作用域时，作用域栈为空");
     }
   }
 
-  /**
-   * 分析值节点
-   *
-   * @param node 值节点
-   * @return 节点的类型信息
-   */
-  private TypeInfo analyzeValue(TokenTreeView node) {
-    String value = node.getValue();
-    if (value == null) {
-      return TypeInfo.UNKNOWN;
+  // 获取当前作用域路径字符串
+  private String getCurrentScopePath(boolean forNewEntry) {
+    if (scopeStack.isEmpty()) {
+      return "/"; // 或者抛出错误，不应该为空
     }
-
-    // 检查子节点中的具体值
-    for (TokenTreeView child : node.getChildren()) {
-      String childValue = child.getValue();
-      if (childValue != null) {
-        if (childValue.equals("true") || childValue.equals("false") || childValue.equals("True") || childValue.equals("False")) {
-          return TypeInfo.BOOL;
-        } else if (childValue.contains(".")) {
-          return TypeInfo.FLOAT;
-        } else if (childValue.matches("\\d+")) {
-          return TypeInfo.INT;
-        }
-      }
+    if (forNewEntry) {
+        return scopeStack.stream().map(String::valueOf).collect(Collectors.joining("/")) + "/";
     }
-
-    // 尝试从当前节点的值判断类型
-    if (value.equals("true") || value.equals("false") || value.equals("True") || value.equals("False")) {
-      return TypeInfo.BOOL;
-    } else if (value.contains(".")) {
-      return TypeInfo.FLOAT;
-    } else if (value.matches("\\d+")) {
-      return TypeInfo.INT;
+    // 当检查父作用域或已存在条目时，不需要尾部的 nextScopeId
+    Stack<Integer> tempStack = new Stack<>();
+    tempStack.addAll(scopeStack);
+    if (!forNewEntry && tempStack.size() > 1) { // 如果不是为新条目且不是全局作用域，则不包含最后一个元素（当前新作用域的id）
+        // 这个逻辑可能需要调整，取决于 getCurrentScopePath 何时被调用
+        // 对于 checkForUnusedVariables，我们需要的是当前栈代表的完整路径
     }
-
-    return TypeInfo.UNKNOWN;
+    return tempStack.stream().map(String::valueOf).collect(Collectors.joining("/")) + "/";
   }
 
-  /**
-   * 检查表达式是否有副作用（用于警告无副作用的表达式语句）
-   *
-   * @param node 表达式节点
-   * @return 是否有副作用
-   */
-  private boolean hasEffect(TokenTreeView node) {
-    if (node == null) {
-      return false;
-    }
-
-    // 赋值表达式有副作用
-    if (node.getValue() != null && node.getValue().contains("赋值")) {
-      return true;
-    }
-
-    // 检查是否包含赋值运算符
-    for (TokenTreeView child : node.getChildren()) {
-      if ("OPERATOR".equals(child.getNodeType())) {
-        String op = child.getValue();
-        if (op.equals("=") || op.equals("+=") || op.equals("-=") || op.equals("*=") || op.equals("/=") || op.equals("%=") || op.equals("++") || op.equals("--")) {
-          return true;
-        }
-      }
-
-      // 递归检查子节点
-      if (hasEffect(child)) {
-        return true;
-      }
-    }
-
-    return false;
-  }
-
-  /**
-   * 检查是否有未使用的变量
-   */
-  private void checkUnusedVariables() {
-    // 遍历作用域栈，检查所有作用域中的未使用变量
-    for (Scope scope : scopeStack) {
-      for (Map.Entry<String, Symbol> entry : scope.getSymbols().entrySet()) {
-        Symbol symbol = entry.getValue();
-        if (!symbol.isUsed()) {
-          String scopePrefix = scope.getName().equals("全局") ? "全局" : "局部";
-          warn(scopePrefix + "变量 '" + entry.getKey() + "' 已声明但从未使用");
-        }
+  // 声明的变量未使用警告 (在此阶段仅为框架，具体实现需要跟踪变量使用)
+  private void checkForUnusedVariables(String scopePath) {
+    for (VariableTableEntry varEntry : variableTable) {
+      if (varEntry.getScope().equals(scopePath) && !usedVariables.contains(varEntry)) {
+        warn("变量 '" + varEntry.getName() + "' 在作用域 '" + scopePath + "' 中已声明但从未使用");
       }
     }
   }
 
-  /**
-   * 检查变量是否已声明
-   *
-   * @param name 变量名
-   * @return 是否已声明
-   */
-  private boolean isDeclared(String name) {
-    return getSymbol(name) != null;
+  // 分析定义语句 (变量或常量)
+  private void analyzeDefinition(TokenTreeView definitionNode) {
+    // TODO: 实现定义分析，包括提取名称、类型、值，并进行重复声明检查
+    // NodeType.DEFINITION 的子节点结构未知，需要根据实际情况调整
+    // 假设子节点：0: 类型, 1: 名称, [2: 初始值 (可选)]
+    // 假设 definitionNode 本身包含是变量还是常量的类型信息，或者其子节点指明
+    warn("analyzeDefinition 方法尚未完全实现。节点: " + definitionNode.getValue());
   }
 
-  /**
-   * 获取变量符号，从当前作用域开始查找，然后逐级向上
-   *
-   * @param name 变量名
-   * @return 变量符号，如果不存在返回null
-   */
-  private Symbol getSymbol(String name) {
-    // 从当前作用域开始查找
-    Scope current = currentScope();
-    while (current != null) {
-      Symbol symbol = current.getSymbol(name);
-      if (symbol != null) {
-        return symbol;
-      }
-      // 向上一级作用域查找
-      current = current.getParent();
-    }
-
-    // 查找是否是函数
-    if (functionSymbols.containsKey(name)) {
-      return functionSymbols.get(name);
-    }
-
-    return null;
-  }
-
-  /**
-   * 从字符串获取类型信息
-   *
-   * @param typeStr 类型字符串
-   * @return 类型信息
-   */
-  private TypeInfo getTypeFromString(String typeStr) {
-    return switch (typeStr) {
-      case "int" -> TypeInfo.INT;
-      case "float" -> TypeInfo.FLOAT;
-      case "bool" -> TypeInfo.BOOL;
-      case "void" -> TypeInfo.VOID;
-      default -> TypeInfo.UNKNOWN;
-    };
-  }
-
-  /**
-   * 检查类型是否兼容
-   *
-   * @param target 目标类型
-   * @param source 源类型
-   * @return 是否兼容
-   */
-  private boolean isTypeCompatible(TypeInfo target, TypeInfo source) {
-    if (target == TypeInfo.UNKNOWN || source == TypeInfo.UNKNOWN) {
-      return true;
-    }
-    if (target == source) {
-      return true;
-    }
-
-    // int可以赋值给float
-    return target == TypeInfo.FLOAT && source == TypeInfo.INT;
-  }
-
-  /**
-   * 检查类型是否是数值类型
-   *
-   * @param type 类型
-   * @return 是否是数值类型
-   */
-  private boolean isNumericType(TypeInfo type) {
-    return type == TypeInfo.INT || type == TypeInfo.FLOAT;
+  // 分析主函数
+  private void analyzeMainFunction(TokenTreeView functionNode) {
+    info("开始分析主函数...");
+    enterScope();
+    // TODO: 分析主函数体内的语句，例如变量定义、赋值等
+    // 遍历 functionNode.getChildren() 来处理函数体内的语句
+    // for (TokenTreeView statement : functionNode.getChildren()) { ... }
+    warn("analyzeMainFunction 方法尚未完全实现函数体分析。节点: " + functionNode.getValue());
+    exitScope();
+    info("主函数分析结束。");
   }
 
   /**
@@ -757,285 +239,16 @@ public class SemanticAnalyzer {
     outInfos.info(src, message);
   }
 
-  /**
-   * 获取符号表数据，用于UI显示
-   *
-   * @return 符号表数据列表
-   */
-  public List<SymbolTableEntry> getSymbolTableEntries() {
-    List<SymbolTableEntry> entries = new ArrayList<>();
-
-    // 遍历所有作用域和符号
-    Stack<Scope> tempStack = new Stack<>();
-    tempStack.addAll(scopeStack);
-
-    while (!tempStack.isEmpty()) {
-      Scope scope = tempStack.pop();
-      for (Map.Entry<String, Symbol> entry : scope.getSymbols().entrySet()) {
-        Symbol symbol = entry.getValue();
-        String typeStr = symbol.getType().toString();
-        String info = symbol.isConstant() ? "常量" : "变量";
-        info += symbol.isInitialized() ? "，已初始化" : "，未初始化";
-        info += symbol.isUsed() ? "，已使用" : "，未使用";
-
-        // 创建符号表条目
-        entries.add(new SymbolTableEntry(symbol.getName(), typeStr, scope.getName(), 0, // 行号信息需要在分析时记录
-            info));
-      }
-
-      // 如果有父作用域，也加入遍历
-      if (scope.getParent() != null) {
-        tempStack.push(scope.getParent());
-      }
-    }
-
-    return entries;
-  }
-
-  /**
-   * 获取变量表数据，用于UI显示
-   *
-   * @return 变量表数据列表
-   */
+  // Getter 方法，供外部（如Controller）调用以显示符号表
   public List<VariableTableEntry> getVariableTableEntries() {
-    List<VariableTableEntry> entries = new ArrayList<>();
-
-    // 遍历所有作用域和符号
-    Stack<Scope> tempStack = new Stack<>();
-    tempStack.addAll(scopeStack);
-
-    while (!tempStack.isEmpty()) {
-      Scope scope = tempStack.pop();
-      for (Map.Entry<String, Symbol> entry : scope.getSymbols().entrySet()) {
-        Symbol symbol = entry.getValue();
-
-        // 只处理非函数符号
-        if (!(symbol instanceof FunctionSymbol)) {
-          String initialValue = symbol.isInitialized() ? "已初始化" : "未初始化";
-
-          // 创建变量表条目
-          entries.add(new VariableTableEntry(symbol.getName(), symbol.getType()
-                                                                     .toString(), scope.getName(), initialValue, symbol.isUsed()));
-        }
-      }
-
-      // 如果有父作用域，也加入遍历
-      if (scope.getParent() != null) {
-        tempStack.push(scope.getParent());
-      }
-    }
-
-    return entries;
+    return new ArrayList<>(variableTable); // 返回副本以防外部修改
   }
 
-  /**
-   * 获取函数表数据，用于UI显示
-   *
-   * @return 函数表数据列表
-   */
+  public List<ConstTableEntry> getConstTableEntries() {
+    return new ArrayList<>(constTable); // 返回副本以防外部修改
+  }
+
   public List<FunctionTableEntry> getFunctionTableEntries() {
-    List<FunctionTableEntry> entries = new ArrayList<>();
-
-    // 遍历函数符号表
-    for (Map.Entry<String, FunctionSymbol> entry : functionSymbols.entrySet()) {
-      FunctionSymbol function = entry.getValue();
-
-      // 构建参数字符串
-      StringBuilder paramsBuilder = new StringBuilder();
-      List<Symbol> params = function.getParameters();
-      for (int i = 0; i < params.size(); i++) {
-        Symbol param = params.get(i);
-        paramsBuilder.append(param.getType().toString()).append(" ").append(param.getName());
-        if (i < params.size() - 1) {
-          paramsBuilder.append(", ");
-        }
-      }
-      String paramsStr = paramsBuilder.toString();
-      if (paramsStr.isEmpty()) {
-        paramsStr = "void";
-      }
-
-      // 创建函数表条目
-      entries.add(new FunctionTableEntry(function.getName(), function.getReturnType()
-                                                                     .toString(), paramsStr, 0, // 行号信息需要在分析时记录
-          0  // 调用次数需要在分析时记录
-      ));
-    }
-
-    return entries;
-  }
-
-  // 类型信息枚举
-  private enum TypeInfo {
-    INT,        // 整数类型
-    FLOAT,      // 浮点类型
-    BOOL,       // 布尔类型
-    VOID,       // 空类型
-    UNKNOWN     // 未知类型
-  }
-
-  /**
-   * 作用域类，用于管理符号表和作用域层次
-   */
-  private class Scope {
-
-    private final String name;                 // 作用域名称
-    private final Map<String, Symbol> symbols; // 符号表
-    private final Scope parent;               // 父作用域
-    private final int scopeId;                // 作用域ID
-    private final String scopePath;           // 作用域路径
-
-    /**
-     * 构造函数
-     *
-     * @param name   作用域名称
-     * @param parent 父作用域
-     */
-    public Scope(String name, Scope parent, int scopeId) {
-      this.name = name;
-      this.parent = parent;
-      this.symbols = new HashMap<>();
-      this.scopeId = scopeId; // 使用传入的作用域ID
-      
-      // 构建作用域路径
-      if (parent == null) {
-        this.scopePath = scopeId + "/";
-      } else {
-        this.scopePath = parent.getScopePath() + scopeId + "/";
-      }
-    }
-
-    /**
-     * 在当前作用域中添加符号
-     *
-     * @param symbol 符号
-     * @return 如果符号已存在返回false，否则返回true
-     */
-    public boolean addSymbol(Symbol symbol) {
-      if (symbols.containsKey(symbol.getName())) {
-        return false;
-      }
-      symbols.put(symbol.getName(), symbol);
-      // 设置符号的作用域路径
-      symbol.setScopePath(this.scopePath);
-      return true;
-    }
-
-    /**
-     * 查找符号（只在当前作用域）
-     *
-     * @param name 符号名称
-     * @return 符号对象，如果不存在返回null
-     */
-    public Symbol getSymbol(String name) {
-      return symbols.get(name);
-    }
-
-    /**
-     * 获取作用域中的所有符号
-     *
-     * @return 符号表
-     */
-    public Map<String, Symbol> getSymbols() {
-      return symbols;
-    }
-
-    /**
-     * 获取父作用域
-     *
-     * @return 父作用域
-     */
-    public Scope getParent() {
-      return parent;
-    }
-
-    /**
-     * 获取作用域名称
-     *
-     * @return 作用域名称
-     */
-    public String getName() {
-      return name;
-    }
-    
-    /**
-     * 获取作用域路径
-     *
-     * @return 作用域路径
-     */
-    public String getScopePath() {
-      return scopePath;
-    }
-    
-    /**
-     * 获取作用域ID
-     *
-     * @return 作用域ID
-     */
-    public int getScopeId() {
-      return scopeId;
-    }
-  }
-
-  /**
-   * 函数符号类，扩展基本符号
-   */
-  @Getter
-  private class FunctionSymbol extends Symbol {
-
-    private final List<Symbol> parameters;    // 参数列表
-    private final TypeInfo returnType;        // 返回类型
-
-    /**
-     * 构造函数
-     *
-     * @param name       函数名
-     * @param returnType 返回类型
-     */
-    public FunctionSymbol(String name, TypeInfo returnType) {
-      super(name, returnType, false); // 函数不是常量
-      this.parameters = new ArrayList<>();
-      this.returnType = returnType;
-      // 函数定义后就认为初始化了
-      this.setInitialized(true);
-    }
-
-    /**
-     * 添加参数
-     *
-     * @param param 参数符号
-     */
-    public void addParameter(Symbol param) {
-      parameters.add(param);
-    }
-  }
-
-  @Getter
-  @Setter
-  private class Symbol {
-
-    private final String name;       // 符号名称
-    private final TypeInfo type;     // 符号类型
-    private final boolean isConstant; // 是否是常量
-    private boolean initialized;     // 是否已初始化
-    private boolean used;           // 是否已使用
-    private String scopePath;        // 作用域路径
-
-    /**
-     * 构造函数
-     *
-     * @param name       符号名称
-     * @param type       符号类型
-     * @param isConstant 是否是常量
-     */
-    public Symbol(String name, TypeInfo type, boolean isConstant) {
-      this.name = name;
-      this.type = type;
-      this.isConstant = isConstant;
-      this.initialized = false;
-      this.used = false;
-      this.scopePath = "";
-    }
-
+    return new ArrayList<>(functionTable);
   }
 }
