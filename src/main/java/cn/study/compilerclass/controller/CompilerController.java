@@ -250,7 +250,7 @@ public class CompilerController {
 
       // 获取分析结果并转换为ObservableList
       ObservableList<ConstTableEntry> symbolData = FXCollections.observableArrayList(semanticAnalyzer.getConstTableEntries());
-      setSymbolTableData(symbolData);
+      setConstTableData(symbolData);
 
       ObservableList<VariableTableEntry> variableData = FXCollections.observableArrayList(semanticAnalyzer.getVariableTableEntries());
       setVariableTableData(variableData);
@@ -273,7 +273,7 @@ public class CompilerController {
   }
 
   // 添加方法用于从编译器控制器接收语义分析数据
-  public void setSymbolTableData(ObservableList<ConstTableEntry> data) {
+  public void setConstTableData(ObservableList<ConstTableEntry> data) {
     constTable.setItems(data);
   }
 
@@ -641,6 +641,8 @@ public class CompilerController {
   private boolean saveFileAs() {
     FileChooser fileChooser = new FileChooser();
     fileChooser.setTitle("另存为");
+    fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("star 文件", "*.star"));
+    fileChooser.setInitialFileName(currentFile != null ? currentFile.getName() : "未命名文件.star");
     // 从首选项加载上次保存的目录
     Preferences prefs = Preferences.userNodeForPackage(CompilerController.class);
     String lastUsedDirectory = prefs.get("lastUsedSaveAsDirectory", System.getProperty("user.home"));

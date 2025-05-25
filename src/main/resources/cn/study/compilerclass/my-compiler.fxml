@@ -14,7 +14,6 @@
 <?import javafx.scene.control.TextArea?>
 <?import javafx.scene.control.TitledPane?>
 <?import javafx.scene.control.TreeView?>
-<?import javafx.scene.layout.AnchorPane?>
 <?import javafx.scene.layout.BorderPane?>
 <?import javafx.scene.layout.HBox?>
 <?import javafx.scene.layout.VBox?>
@@ -52,7 +51,7 @@
           <items>
             <MenuItem mnemonicParsing="false" onAction="#handleLexicalAnalysis" text="词法分析"/>
             <MenuItem mnemonicParsing="false" onAction="#handleSyntaxAnalysis" text="语法分析"/>
-            <MenuItem mnemonicParsing="false" onAction="#handleSemanticAnalysis" text="语义分析"/>
+            <MenuItem mnemonicParsing="false" onAction="#handleSemanticAnalysis" text="语义分析及中间代码生成"/>
             <SeparatorMenuItem mnemonicParsing="false"/>
             <MenuItem fx:id="exportSyntaxTreeItem" mnemonicParsing="false" onAction="#handleExportSyntaxTree" text="导出语法树..."/>
           </items>
@@ -114,11 +113,14 @@
                           <content>
                             <TableView fx:id="variableTable" prefHeight="200.0" prefWidth="200.0">
                               <columns>
-                                <TableColumn fx:id="varNameColumn" prefWidth="100.0" text="变量名"/>
-                                <TableColumn fx:id="varTypeColumn" prefWidth="100.0" text="类型"/>
-                                <TableColumn fx:id="varScopeColumn" prefWidth="100.0" text="作用域"/>
-                                <TableColumn fx:id="varValueColumn" prefWidth="100.0" text="值"/>
+                                <TableColumn fx:id="varNameColumn" maxWidth="1.7976931348623157E308" minWidth="100.0" prefWidth="-1.0" text="变量名"/>
+                                <TableColumn fx:id="varTypeColumn" maxWidth="1.7976931348623157E308" minWidth="100.0" prefWidth="100.0" text="类型"/>
+                                <TableColumn fx:id="varScopeColumn" maxWidth="1.7976931348623157E308" minWidth="100.0" prefWidth="100.0" text="作用域"/>
+                                <TableColumn fx:id="varValueColumn" maxWidth="1.7976931348623157E308" minWidth="100.0" prefWidth="100.0" text="值"/>
                               </columns>
+                              <columnResizePolicy>
+                                <TableView fx:constant="CONSTRAINED_RESIZE_POLICY"/>
+                              </columnResizePolicy>
                             </TableView>
                           </content>
                         </Tab>
@@ -126,11 +128,14 @@
                           <content>
                             <TableView fx:id="constTable" prefHeight="200.0" prefWidth="200.0">
                               <columns>
-                                <TableColumn fx:id="constNameColumn" prefWidth="100.0" text="变量名"/>
-                                <TableColumn fx:id="constTypeColumn" prefWidth="100.0" text="类型"/>
-                                <TableColumn fx:id="constScopeColumn" prefWidth="100.0" text="作用域"/>
-                                <TableColumn fx:id="constValueColumn" prefWidth="100.0" text="值"/>
+                                <TableColumn fx:id="constNameColumn" maxWidth="1.7976931348623157E308" minWidth="100.0" prefWidth="-1.0" text="常量名"/>
+                                <TableColumn fx:id="constTypeColumn" maxWidth="1.7976931348623157E308" minWidth="100.0" prefWidth="100.0" text="类型"/>
+                                <TableColumn fx:id="constScopeColumn" maxWidth="1.7976931348623157E308" minWidth="100.0" prefWidth="100.0" text="作用域"/>
+                                <TableColumn fx:id="constValueColumn" maxWidth="1.7976931348623157E308" minWidth="100.0" prefWidth="100.0" text="值"/>
                               </columns>
+                              <columnResizePolicy>
+                                <TableView fx:constant="CONSTRAINED_RESIZE_POLICY"/>
+                              </columnResizePolicy>
                             </TableView>
                           </content>
                         </Tab>
@@ -138,16 +143,35 @@
                           <content>
                             <TableView fx:id="functionTable" prefHeight="200.0" prefWidth="200.0">
                               <columns>
-                                <TableColumn fx:id="funcNameColumn" prefWidth="100.0" text="函数名"/>
-                                <TableColumn fx:id="funcReturnTypeColumn" prefWidth="100.0" text="返回类型"/>
-                                <TableColumn fx:id="funcParamTypeColumn" prefWidth="200.0" text="参数类型列表"/>
-                                <TableColumn fx:id="funcParamCountColumn" prefWidth="100.0" text="参数个数"/>
+                                <TableColumn fx:id="funcNameColumn" maxWidth="1.7976931348623157E308" minWidth="100.0" prefWidth="-1.0" text="函数名"/>
+                                <TableColumn fx:id="funcReturnTypeColumn" maxWidth="1.7976931348623157E308" minWidth="80.0" text="返回类型"/>
+                                <TableColumn fx:id="funcParamTypeColumn" maxWidth="1.7976931348623157E308" minWidth="100.0" prefWidth="-1.0" text="参数类型列表"/>
+                                <TableColumn fx:id="funcParamCountColumn" maxWidth="1.7976931348623157E308" minWidth="80.0" text="参数个数"/>
                               </columns>
+                              <columnResizePolicy>
+                                <TableView fx:constant="CONSTRAINED_RESIZE_POLICY"/>
+                              </columnResizePolicy>
                             </TableView>
                           </content>
                         </Tab>
                       </tabs>
                     </TabPane>
+                  </content>
+                </Tab>
+                <Tab text="四元式">
+                  <content>
+                    <TableView fx:id="middleTable" prefHeight="200.0" prefWidth="200.0">
+                      <columns>
+                        <TableColumn fx:id="middleIdColumn" maxWidth="1.7976931348623157E308" minWidth="80.0" text="序号"/>
+                        <TableColumn fx:id="middleOpColumn" maxWidth="1.7976931348623157E308" minWidth="100.0" text="操作"/>
+                        <TableColumn fx:id="middleArg1Column" maxWidth="1.7976931348623157E308" minWidth="100.0" text="参数1"/>
+                        <TableColumn fx:id="middleArg2Column" maxWidth="1.7976931348623157E308" minWidth="100.0" text="参数2"/>
+                        <TableColumn fx:id="middleResultColumn" maxWidth="1.7976931348623157E308" minWidth="100.0" text="结果"/>
+                      </columns>
+                      <columnResizePolicy>
+                        <TableView fx:constant="CONSTRAINED_RESIZE_POLICY"/>
+                      </columnResizePolicy>
+                    </TableView>
                   </content>
                 </Tab>
               </tabs>

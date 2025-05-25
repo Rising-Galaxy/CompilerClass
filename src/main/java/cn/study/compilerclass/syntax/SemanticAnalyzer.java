@@ -33,11 +33,11 @@ public class SemanticAnalyzer {
   private final List<FunctionTableEntry> functionTable; // 函数表
 
   private final Stack<Integer> scopeStack;            // 作用域栈
-  private int nextScopeId;                            // 下一个作用域的ID
-  private boolean mainFunctionFound;                  // 是否找到主函数
   // 用于跟踪变量使用情况
   private final Set<VariableTableEntry> usedVariables;
   private final Set<String> declaredVariablesInScope; // 用于在当前作用域内快速检查重复声明
+  private int nextScopeId;                            // 下一个作用域的ID
+  private boolean mainFunctionFound;                  // 是否找到主函数
 
   /**
    * 构造函数
@@ -109,14 +109,109 @@ public class SemanticAnalyzer {
     }
   }
 
+  // 分析整体程序结构
+  private void analyzeProgram(TokenTreeView node) {
+    for (TokenTreeView child : node.getChildren()) {
+      NodeType nodeType = child.getNodeType();
+      switch (nodeType) {
+        case DEFINITION -> analyzeDefinition(child);
+        // case DECLARATION -> analyzeDeclaration(child);
+        case FUNCTION -> {
+          if ("主函数".equals(child.getValue())) {
+            if (mainFunctionFound) {
+              error("程序中不能有多个主函数");
+            }
+            mainFunctionFound = true;
+            analyzeMainFunction(child); // 主函数内部也可能有赋值语句
+          } else {
+            warn("发现非主函数定义：" + child.getValue() + "，暂不处理函数声明。");
+          }
+        }
+      }
+    }
+  }
+
+  // 分析变量定义和常量定义
+  private void analyzeDefinition(TokenTreeView definitionNode) {
+    ArrayList<TokenTreeView> children = definitionNode.getChildren();
+    // 判断是否为常量定义
+    boolean isConst = "const".equals(children.getFirst().getValue());
+    int typeNodeIndex = isConst ? 1 : 0; // 常量定义从索引1开始，变量定义从索引0开始
+
+    TokenTreeView typeNode = children.get(typeNodeIndex);
+    String commonType = typeNode.getValue(); // 类型节点
+
+    // 从类型节点之后开始遍历每个定义
+    for (int i = typeNodeIndex + 1; i < children.size(); i++) {
+      TokenTreeView varNode = children.get(i);
+      ArrayList<TokenTreeView> nodes = varNode.getChildren();
+      String name = nodes.getFirst().getValue(); // 变量名
+      // 检查是否重复定义
+      if (isConst) {
+        if (findConst(name, getCurrentScopePath()) != null) {
+          error("常量 '" + name + "' 重复定义");
+        }
+      } else {
+        if (findVariable(name, getCurrentScopePath()) != null) {
+          error("变量 '" + name + "' 重复定义");
+        }
+      }
+
+      String value = "未初始化";
+      if (isConst || varNode.getDescription().equals("init")) {
+        TokenTreeView valueNode = varNode.getChildren().getLast();
+        if (valueNode.getNodeType() == NodeType.VALUE) {
+          value = valueNode.getChildren().getFirst().getValue(); // 直接取值
+        } else if (valueNode.getNodeType() == NodeType.EXPRESSION) {
+          value = "表达式";
+        }
+      }
+
+      if (isConst) {
+        constTable.add(new ConstTableEntry(name, commonType, value, getCurrentScopePath()));
+        // info("常量 '" + name + "' 定义成功，类型为 '" + commonType + "'，值为 '" + value + "'");
+      } else {
+        variableTable.add(new VariableTableEntry(name, commonType, getCurrentScopePath(), value));
+        // info("变量 '" + name + "' 定义成功，类型为 '" + commonType + "'，初始值为 '" + value + "'");
+      }
+    }
+  }
+
+  // 分析主函数
+  private void analyzeMainFunction(TokenTreeView functionNode) {
+    // info("开始分析主函数...");
+    enterScope();
+    // 遍历主函数体内的语句
+    if (functionNode.getChildren()!= null) {
+      for (TokenTreeView statementNode : functionNode.getChildren()) {
+        analyzeStatement(statementNode); // 调用通用的语句分析方法
+      }
+    }
+    exitScope();
+    // info("主函数分析结束。");
+  }
+
+  // 通用语句分析方法，可以被函数体、代码块等调用
+  private void analyzeStatement(TokenTreeView statementNode) {
+    switch (statementNode.getNodeType()) {
+      case DEFINITION -> analyzeDefinition(statementNode);
+      case ASSIGNMENT_STMT -> analyzeAssignmentStatement(statementNode);
+      // case IF_STMT -> analyzeIfStatement(statementNode);
+      // case WHILE_STMT -> analyzeWhileStatement(statementNode);
+      default ->
+          warn("在语句级别发现未处理的节点类型: " + statementNode.getNodeType() + " (Value: " + statementNode.getValue() + ")");
+    }
+  }
+
+  // 分析赋值语句
   private void analyzeAssignmentStatement(TokenTreeView assignmentNode) {
     if (assignmentNode.getChildren().size() < 3) {
       error("赋值语句 \"" + assignmentNode.getValue() + "\" 结构不完整，至少需要左操作数、赋值操作符和右操作数。");
       return;
     }
 
-    TokenTreeView leftOperandNode = assignmentNode.getChildren().get(0);
-    TokenTreeView rightOperandNode = assignmentNode.getChildren().get(2);
+    TokenTreeView leftOperandNode = assignmentNode.getChildren().getFirst();
+    TokenTreeView rightOperandNode = assignmentNode.getChildren().getLast();
 
     String variableName = leftOperandNode.getValue();
     if (leftOperandNode.getNodeType() != NodeType.IDENTIFIER) {
@@ -124,7 +219,7 @@ public class SemanticAnalyzer {
       return;
     }
 
-    String currentScopePath = getCurrentScopePath(false); // 获取当前作用域用于查找
+    String currentScopePath = getCurrentScopePath(); // 获取当前作用域用于查找
 
     // 1. 检查左侧是否为常量
     ConstTableEntry constEntry = findConst(variableName, currentScopePath);
@@ -173,7 +268,7 @@ public class SemanticAnalyzer {
   private void enterScope() {
     scopeStack.push(nextScopeId);
     declaredVariablesInScope.clear(); // 进入新作用域时，清空当前作用域的声明记录
-    info("进入作用域: " + getCurrentScopePath(false) + " (ID: " + nextScopeId + ")");
+    info("进入作用域: " + getCurrentScopePath() + " (ID: " + nextScopeId + ")");
     nextScopeId++;
   }
 
@@ -181,13 +276,13 @@ public class SemanticAnalyzer {
     if (!scopeStack.isEmpty()) {
       Integer exitedScopeId = scopeStack.pop();
       declaredVariablesInScope.clear(); // 退出作用域时，清空，尽管通常在enter时处理
-      info("退出作用域: " + getCurrentScopePath(false) + " (原ID: " + exitedScopeId + ")");
+      info("退出作用域: " + getCurrentScopePath() + " (原ID: " + exitedScopeId + ")");
     } else {
       error("尝试退出作用域失败：作用域栈为空。");
     }
   }
 
-  private String getCurrentScopePath(boolean forNewDeclaration) {
+  private String getCurrentScopePath() {
     if (scopeStack.isEmpty()) {
       return "/"; // 或者抛出错误，表示不应在无作用域时调用
     }
@@ -245,76 +340,6 @@ public class SemanticAnalyzer {
     return false;
   }
 
-  private void analyzeDefinition(TokenTreeView definitionNode) {
-    // DEFINITION -> TYPE IDENTIFIER (= CONST_VALUE)? (, IDENTIFIER (= CONST_VALUE)?)* ;
-    // 或 DEFINITION -> const TYPE IDENTIFIER = CONST_VALUE (, IDENTIFIER = CONST_VALUE)* ;
-    if (definitionNode.getChildren().isEmpty()) {
-      error("定义节点为空，无法处理。");
-      return;
-    }
-
-    boolean isConst = "const".equals(definitionNode.getChildren().get(0).getValue());
-    int typeNodeIndex = isConst ? 1 : 0;
-
-    if (definitionNode.getChildren().size() <= typeNodeIndex) {
-      error("定义语句缺少类型声明。节点: " + definitionNode.getValue());
-      return;
-    }
-    TokenTreeView typeNode = definitionNode.getChildren().get(typeNodeIndex);
-    String commonType = typeNode.getValue(); // e.g., "int", "char"
-
-    // 从类型节点之后开始遍历每个声明的部分 (IDENTIFIER (= VALUE)?)
-    for (int i = typeNodeIndex + 1; i < definitionNode.getChildren().size(); i++) {
-      TokenTreeView declNode = definitionNode.getChildren().get(i);
-
-      if (declNode.getNodeType() == NodeType.IDENTIFIER) {
-        String name = declNode.getValue();
-        String value = null; // 变量可以没有初始值，常量必须有
-
-        // 检查下一个节点是否是赋值操作符 "="
-        if (i + 1 < definitionNode.getChildren().size() && "=".equals(definitionNode.getChildren()
-                                                                                    .get(i + 1)
-                                                                                    .getValue())) {
-          if (i + 2 < definitionNode.getChildren().size()) {
-            TokenTreeView valueNode = definitionNode.getChildren().get(i + 2);
-            // TODO: 这里需要更复杂的表达式分析，暂时简单取值
-            value = valueNode.getValue();
-            i += 2; // 跳过 "=" 和 valueNode
-          } else {
-            error("常量/变量 '" + name + "' 的赋值缺少右值。");
-            continue;
-          }
-        } else if (isConst) {
-          error("常量 '" + name + "' 必须被初始化。");
-          continue;
-        }
-
-        String currentScope = getCurrentScopePath(true);
-        if (isVariableAlreadyDeclared(name, currentScope, isConst)) {
-          error((isConst ? "常量" : "变量") + " '" + name + "' 在作用域 '" + currentScope + "' 中重复声明。");
-          continue;
-        }
-
-        if (isConst) {
-          ConstTableEntry entry = new ConstTableEntry(name, commonType, value, currentScope);
-          constTable.add(entry);
-          info("声明常量: " + entry + " 在作用域: " + currentScope);
-        } else {
-          VariableTableEntry entry = new VariableTableEntry(name, commonType, value, currentScope);
-          variableTable.add(entry);
-          // declaredVariablesInScope.add(name + "@" + currentScope); // 记录已声明
-          info("声明变量: " + entry + " 在作用域: " + currentScope);
-        }
-
-      } else if (",".equals(declNode.getValue())) {
-        // 逗号分隔符，继续下一个声明
-        continue;
-      } else {
-        warn("定义语句中遇到未预期的节点: " + declNode.getValue() + " 类型: " + declNode.getNodeType());
-      }
-    }
-  }
-
   // 辅助方法：查找变量 (考虑作用域)
   private VariableTableEntry findVariable(String name, String currentScopePath) {
     // 从当前作用域向上查找
@@ -367,114 +392,24 @@ public class SemanticAnalyzer {
     return null; // 未找到
   }
 
-  // 修改 analyzeProgram (或相关函数体/块分析方法) 以调用 analyzeAssignmentStatement
-  private void analyzeProgram(TokenTreeView node) {
-    for (TokenTreeView child : node.getChildren()) {
-      NodeType nodeType = child.getNodeType();
-      if (nodeType == null) {
-        warn("节点 " + child.getValue() + " 的 NodeType 为空，跳过处理。");
-        continue;
-      }
-      switch (nodeType) {
-        case DEFINITION -> analyzeDefinition(child);
-        case FUNCTION -> {
-          if ("主函数".equals(child.getValue())) {
-            if (mainFunctionFound) {
-              error("程序中不能有多个主函数");
-            }
-            mainFunctionFound = true;
-            analyzeMainFunction(child); // 主函数内部也可能有赋值语句
-          } else {
-            warn("发现非主函数定义：" + child.getValue() + "，暂不处理函数声明。");
-            // analyzeFunctionDeclaration(child); // 其他函数内部也可能有赋值语句
-          }
-        }
-        case ASSIGNMENT_STMT -> analyzeAssignmentStatement(child); // 新增对赋值语句的处理
-        // 可以在这里添加对其他语句类型（如IF_STMT, WHILE_STMT等内部语句）的递归分析调用
-        // 它们内部也可能包含赋值语句
-        default -> {
-          // 对于容器类型的节点（如 BLOCK），需要递归分析其子节点
-          if (child.getChildren() != null && !child.getChildren().isEmpty()) {
-            // warn("在 Program 级别发现容器节点: " + nodeType + " (Value: " + child.getValue() + "), 递归分析其子节点");
-            // enterScope(); // 如果是新的块级作用域
-            // analyzeStatements(child.getChildren()); // 一个通用的语句分析方法
-            // exitScope();
-          } else {
-            warn("在 Program 级别发现未处理的节点类型: " + nodeType + " (Value: " + child.getValue() + ")");
-          }
-        }
-      }
-    }
-  }
+  // 分析条件语句
+  private void analyzeIfStatement(TokenTreeView conditionNode) {
+    // info("分析条件语句: " + ifNode.getValue());
+    ArrayList<TokenTreeView> children = conditionNode.getChildren();
+    TokenTreeView ifNode = children.getFirst(); // EXPR
 
-  // analyzeMainFunction 也需要遍历其子语句
-  private void analyzeMainFunction(TokenTreeView functionNode) {
-    info("开始分析主函数...");
-    enterScope();
-    // 遍历主函数体内的语句
-    if (functionNode.getChildren() != null) {
-      for (TokenTreeView statementNode : functionNode.getChildren()) {
-        analyzeStatement(statementNode); // 调用通用的语句分析方法
-      }
-    }
-    // warn("analyzeMainFunction 方法尚未完全实现函数体分析。节点: " + functionNode.getValue());
-    exitScope();
-    info("主函数分析结束。");
-  }
-
-  // 通用语句分析方法，可以被函数体、代码块等调用
-  private void analyzeStatement(TokenTreeView statementNode) {
-    if (statementNode == null || statementNode.getNodeType() == null) {
-      warn("遇到空语句节点或节点类型为空，跳过。");
-      return;
-    }
-    switch (statementNode.getNodeType()) {
-      case DEFINITION -> analyzeDefinition(statementNode);
-      case ASSIGNMENT_STMT -> analyzeAssignmentStatement(statementNode);
-      case IF_STMT -> analyzeIfStatement(statementNode); // 需要实现
-      case WHILE_STMT -> analyzeWhileStatement(statementNode); // 需要实现
-      // ... 其他语句类型
-      case BLOCK -> {
-        enterScope();
-        if (statementNode.getChildren() != null) {
-          for (TokenTreeView subStatement : statementNode.getChildren()) {
-            analyzeStatement(subStatement);
-          }
-        }
-        exitScope();
-      }
-      default ->
-          warn("在语句级别发现未处理的节点类型: " + statementNode.getNodeType() + " (Value: " + statementNode.getValue() + ")");
-    }
-  }
-
-  // 以下是IF和WHILE的存根，需要您根据语法树结构实现
-  private void analyzeIfStatement(TokenTreeView ifNode) {
-    info("分析IF语句: " + ifNode.getValue());
-    // IF_STMT -> if ( EXPR ) STMT (else STMT)?
-    // 假设子节点结构: 0: 'if', 1: '(', 2: EXPR, 3: ')', 4: STMT_THEN, [5: 'else', 6: STMT_ELSE]
-
-    if (ifNode.getChildren().size() < 5) {
-      error("IF语句结构不完整: " + ifNode.getValue());
-      return;
-    }
-
-    TokenTreeView conditionNode = ifNode.getChildren().get(2); // EXPR
-    // analyzeExpression(conditionNode); // TODO: 实现表达式分析和类型检查，确保其为布尔类型
-    info("IF 条件: " + conditionNode.getValue());
-
-    TokenTreeView thenStatementNode = ifNode.getChildren().get(4); // STMT_THEN
+    TokenTreeView thenStatementNode = conditionNode.getChildren().get(4); // STMT_THEN
     info("分析IF语句的THEN分支");
     enterScope();
     analyzeStatement(thenStatementNode);
     exitScope();
 
-    if (ifNode.getChildren().size() > 5 && "else".equals(ifNode.getChildren().get(5).getValue())) {
-      if (ifNode.getChildren().size() < 7) {
-        error("IF语句的ELSE分支结构不完整: " + ifNode.getValue());
+    if (conditionNode.getChildren().size() > 5 && "else".equals(conditionNode.getChildren().get(5).getValue())) {
+      if (conditionNode.getChildren().size() < 7) {
+        error("IF语句的ELSE分支结构不完整: " + conditionNode.getValue());
         return;
       }
-      TokenTreeView elseStatementNode = ifNode.getChildren().get(6); // STMT_ELSE
+      TokenTreeView elseStatementNode = conditionNode.getChildren().get(6); // STMT_ELSE
       info("分析IF语句的ELSE分支");
       enterScope();
       analyzeStatement(elseStatementNode);
@@ -510,7 +445,7 @@ public class SemanticAnalyzer {
     ArrayList<TokenTreeView> children = functionNode.getChildren();
     String functionName = children.get(1).getValue();
     String returnType = children.get(0).getValue();
-    
+
     // 检查重复函数声明
     if (functionTable.stream().anyMatch(f -> f.getName().equals(functionName))) {
       error("函数 '" + functionName + "' 重复声明");
@@ -532,12 +467,31 @@ public class SemanticAnalyzer {
     info("声明函数: " + entry);
   }
 
+  /**
+   * 输出错误信息
+   *
+   * @param message 错误信息
+   */
+  private void error(String message) {
+    errors.add(message);
+    outInfos.error(src, message);
+  }
+
+  /**
+   * 输出信息
+   *
+   * @param message 信息
+   */
+  private void info(String message) {
+    outInfos.info(src, message);
+  }
+
   private void analyzeFunctionCall(TokenTreeView callNode) {
     String functionName = callNode.getChildren().getFirst().getValue();
     FunctionTableEntry function = functionTable.stream()
-        .filter(f -> f.getName().equals(functionName))
-        .findFirst()
-        .orElse(null);
+                                               .filter(f -> f.getName().equals(functionName))
+                                               .findFirst()
+                                               .orElse(null);
 
     if (function == null) {
       error("未声明的函数调用: " + functionName);
@@ -553,10 +507,14 @@ public class SemanticAnalyzer {
         String actualType = analyzeExpression(actualParams.get(i));
         String expectedType = function.getParamTypes().get(i);
         if (!actualType.equals(expectedType)) {
-          error("参数类型不匹配，位置 " + (i+1) + " 期望 " + expectedType + " 实际 " + actualType);
+          error("参数类型不匹配，位置 " + (i + 1) + " 期望 " + expectedType + " 实际 " + actualType);
         }
       }
     }
+  }
+
+  private String analyzeExpression(TokenTreeView exprNode) {
+    return "";
   }
 
   private void analyzeDoWhileLoop(TokenTreeView doWhileNode) {
@@ -572,28 +530,14 @@ public class SemanticAnalyzer {
     }
   }
 
-  private String analyzeExpression(TokenTreeView exprNode) {
-    return "";
-  }
-
   private String analyzeRelationalExpression(TokenTreeView exprNode) {
     String leftType = analyzeExpression(exprNode.getChildren().get(0));
     String rightType = analyzeExpression(exprNode.getChildren().get(2));
-    
+
     if (!leftType.equals(rightType)) {
       error("关系表达式类型不匹配: " + leftType + " 和 " + rightType);
     }
     return "bool";
-  }
-
-  /**
-   * 输出错误信息
-   *
-   * @param message 错误信息
-   */
-  private void error(String message) {
-    errors.add(message);
-    outInfos.error(src, message);
   }
 
   /**
@@ -615,15 +559,6 @@ public class SemanticAnalyzer {
   private void warn(String message) {
     warnings.add(message);
     outInfos.warn(src, message);
-  }
-
-  /**
-   * 输出信息
-   *
-   * @param message 信息
-   */
-  private void info(String message) {
-    outInfos.info(src, message);
   }
 
   // Getter 方法，供外部（如Controller）调用以显示符号表
