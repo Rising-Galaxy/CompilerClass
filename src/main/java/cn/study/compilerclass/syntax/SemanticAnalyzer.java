@@ -478,14 +478,14 @@ public class SemanticAnalyzer {
   // 分析关系表达式
   private Result analyzeRelationalExpression(TokenTreeView relationalNode) {
     // 只能是整数或浮点数与整数或浮点数的关系表达式
-    Result leftType = analyzeExpression(relationalNode.getChildren().getFirst());
-    Result rightType = analyzeExpression(relationalNode.getChildren().getLast());
-    if (!(leftType.equals(rightType) && (leftType.equals("int") || leftType.equals("float")))) {
-      error(String.format("[r: %d, c: %d]-关系表达式类型不匹配，左侧为 %s，右侧为 %s", relationalNode.getRow(), relationalNode.getCol(), leftType, rightType));
+    Result leftRes = analyzeExpression(relationalNode.getChildren().getFirst());
+    Result rightRes = analyzeExpression(relationalNode.getChildren().getLast());
+    if (!(leftRes.getType().equals(rightRes.getType()) && (leftRes.getType().equals("int") || leftRes.getType().equals("float")))) {
+      error(String.format("[r: %d, c: %d]-关系表达式类型不匹配，左侧为 %s，右侧为 %s", relationalNode.getRow(), relationalNode.getCol(), leftRes.getType(), rightRes.getType()));
       return errorResult;
     }
     Result result = new Result(newTmp(), "bool", midId, midId + 1);
-    emitDelayed("j" + relationalNode.getValue(), leftType.getValue(), rightType.getValue(), "0");
+    emitDelayed("j" + relationalNode.getChildren().get(1).getValue(), leftRes.getValue(), rightRes.getValue(), "0");
     emitDelayed("j", "", "", "0");
     processDelayedTasks();
     return result;

@@ -178,7 +178,7 @@
                   <content>
                     <HBox alignment="CENTER" maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308">
                       <children>
-                        <TextArea fx:id="lineNumbersRes" editable="false" prefWidth="40.0" />
+                        <TextArea fx:id="lineNumbersRes" editable="false" prefWidth="40.0" styleClass="line-number" />
                         <TextArea fx:id="resArea" editable="false" HBox.hgrow="ALWAYS" />
                       </children>
                     </HBox>
