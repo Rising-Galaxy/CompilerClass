@@ -17,7 +17,7 @@ public enum NodeType {
   STATEMENT("语句"), ASSIGNMENT_STMT("赋值语句"), IF_STMT("条件语句"), WHILE_STMT("while循环语句"), DO_WHILE_STMT("do-while循环语句"), RETURN_STMT("返回语句"),
 
   // 表达式
-  EXPRESSION("表达式"), BINARY_EXPR("二元表达式"), UNARY_EXPR("一元表达式"), PAREN_EXPR("括号表达式"), RELATIONAL_EXPR("关系表达式"), LOGIC_EXPR("逻辑表达式"), EQUALITY_EXPR("相等性表达式"), ADDITION_EXPR("加减表达式"), MULTIPLICATION_EXPR("乘除表达式"),
+  EXPRESSION("表达式"), BINARY_EXPR("二元表达式"), UNARY_EXPR("一元表达式"), PAREN_EXPR("括号表达式"), RELATIONAL_EXPR("关系表达式"), LOGIC_EXPR("逻辑表达式"), ADDITION_EXPR("加减表达式"), MULTIPLICATION_EXPR("乘除表达式"),
 
   // 基本元素
   IDENTIFIER("标识符"), TYPE("类型"), LITERAL_BOOL("布尔字面量"), LITERAL_INT("整数字面量"), LITERAL_FLOAT("浮点字面量"), LITERAL_CHAR("字符字面量"),

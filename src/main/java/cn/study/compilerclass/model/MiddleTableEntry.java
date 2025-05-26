@@ -58,4 +58,24 @@ public class MiddleTableEntry {
   public SimpleStringProperty resultProperty() {
     return result;
   }
+
+  public void setId(int id) {
+    this.id.set(id);
+  }
+
+  public void setOp(String op) {
+    this.op.set(op);
+  }
+
+  public void setArg1(String arg1) {
+    this.arg1.set(arg1);
+  }
+
+  public void setArg2(String arg2) {
+    this.arg2.set(arg2);
+  }
+
+  public void setResult(String result) {
+    this.result.set(result);
+  }
 }

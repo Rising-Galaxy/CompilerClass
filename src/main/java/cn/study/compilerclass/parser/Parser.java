@@ -909,7 +909,7 @@ public class Parser {
 
   // 逻辑与表达式
   private TokenTreeView booleanTerm() {
-    TokenTreeView node = equalityExpression();
+    TokenTreeView node = nonBF();
     while (!isEOF() && currentToken().getType() == tokenManager.getType("&&")) {
       String opValue = currentToken().getValue();
       TokenTreeView root = new TokenTreeView("逻辑表达式", NodeType.LOGIC_EXPR, "逻辑与运算", currentToken().getLine(), currentToken().getColumn());
@@ -920,7 +920,7 @@ public class Parser {
       root.addChild(opNode);
       consume();
 
-      TokenTreeView right = equalityExpression();
+      TokenTreeView right = nonBF();
       right.setParent(root);
       root.addChild(right);
 
@@ -929,23 +929,16 @@ public class Parser {
     return node;
   }
 
-  // 相等性表达式
-  private TokenTreeView equalityExpression() {
+  // 逻辑非表达式
+  private TokenTreeView nonBF() {
     TokenTreeView node = relationalExpression();
-    while (!isEOF() && (currentToken().getType() == tokenManager.getType("==") || currentToken().getType() == tokenManager.getType("!="))) {
+    while (!isEOF() && (currentToken().getType() == tokenManager.getType("!"))) {
       String opValue = currentToken().getValue();
-      TokenTreeView root = new TokenTreeView("相等性表达式", NodeType.EQUALITY_EXPR, "相等性比较", currentToken().getLine(), currentToken().getColumn());
-      node.setParent(root);
-      root.addChild(node);
-
-      TokenTreeView opNode = new TokenTreeView(root, opValue, NodeType.OPERATOR, "相等性比较运算符", currentToken().getLine(), currentToken().getColumn());
+      TokenTreeView root = new TokenTreeView("逻辑表达式", NodeType.LOGIC_EXPR, "逻辑非运算", currentToken().getLine(), currentToken().getColumn());
+      TokenTreeView opNode = new TokenTreeView(root, opValue, NodeType.OPERATOR, "逻辑非运算符", currentToken().getLine(), currentToken().getColumn());
       root.addChild(opNode);
+      root.addChild(node);
       consume();
-
-      TokenTreeView right = relationalExpression();
-      right.setParent(root);
-      root.addChild(right);
-
       node = root;
     }
     return node;
@@ -954,9 +947,9 @@ public class Parser {
   // 关系表达式
   private TokenTreeView relationalExpression() {
     TokenTreeView node = additionExpression();
-    while (!isEOF() && (currentToken().getType() == tokenManager.getType("<") || currentToken().getType() == tokenManager.getType(">") || currentToken().getType() == tokenManager.getType("<=") || currentToken().getType() == tokenManager.getType(">="))) {
+    while (!isEOF() && (currentToken().getType() == tokenManager.getType("<") || currentToken().getType() == tokenManager.getType(">") || currentToken().getType() == tokenManager.getType("<=") || currentToken().getType() == tokenManager.getType(">=") || currentToken().getType() == tokenManager.getType("==") || currentToken().getType() == tokenManager.getType("!="))) {
       String opValue = currentToken().getValue();
-      TokenTreeView root = new TokenTreeView("关系表达式", NodeType.RELATIONAL_EXPR, "大小比较", currentToken().getLine(), currentToken().getColumn());
+      TokenTreeView root = new TokenTreeView("关系表达式", NodeType.RELATIONAL_EXPR, "关系比较", currentToken().getLine(), currentToken().getColumn());
       node.setParent(root);
       root.addChild(node);
 
@@ -1134,18 +1127,17 @@ public class Parser {
 
           consume(); // 消费左括号
 
-          // 处理参数列表
-          TokenTreeView argsNode = new TokenTreeView(root, "函数参数", NodeType.PARAM_LIST, "参数列表", currentToken().getLine(), currentToken().getColumn());
-          root.addChild(argsNode);
-
           // 如果不是右括号，说明有参数
           if (currentToken().getType() != tokenManager.getType(")")) {
+            // 处理参数列表
+            TokenTreeView argsNode = new TokenTreeView(root, "函数参数", NodeType.PARAM_LIST, "参数列表", currentToken().getLine(), currentToken().getColumn());
+            root.addChild(argsNode);
+
             // 解析第一个参数
             TokenTreeView argNode = expression();
             argNode.setParent(argsNode);
             argsNode.addChild(argNode);
             argNode.setNodeType(NodeType.PARAM);
-            argNode.setValue("参数");
 
             // 解析剩余参数
             while (currentToken().getType() == tokenManager.getType(",")) {
@@ -1156,7 +1148,6 @@ public class Parser {
               argNode.setParent(argsNode);
               argsNode.addChild(argNode);
               argNode.setNodeType(NodeType.PARAM);
-              argNode.setValue("参数");
             }
           }
 

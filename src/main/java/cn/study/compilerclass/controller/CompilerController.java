@@ -95,9 +95,13 @@ public class CompilerController {
   @FXML
   private TextArea codeArea;
   @FXML
+  private TextArea resArea;
+  @FXML
   private TextArea outArea;
   @FXML
   private TextArea lineNumbersCode;
+  @FXML
+  private TextArea lineNumbersRes;
   @FXML
   private Menu editMenu;
   @FXML
@@ -131,6 +135,7 @@ public class CompilerController {
   @FXML
   public void initialize() {
     setupLineNumbers(codeArea, lineNumbersCode);
+    setupLineNumbers(resArea, lineNumbersRes);
     codeArea.textProperty().addListener((obs, old, val) -> markModified());
     codeArea.setFocusTraversable(true);
     setupContextMenu(codeArea);
@@ -138,7 +143,8 @@ public class CompilerController {
     setupFileMenu();
 
     // 添加光标位置监听器
-    codeArea.caretPositionProperty().addListener((obs, oldPos, newPos) -> updateSrcCodeLabel());
+    codeArea.caretPositionProperty().addListener((obs, oldPos, newPos) -> updatePosLabel(codeArea));
+    resArea.caretPositionProperty().addListener((obs, oldPos, newPos) -> updatePosLabel(resArea));
 
     // 添加 Tab 键拦截器
     codeArea.addEventFilter(KeyEvent.KEY_PRESSED, event -> {
@@ -149,7 +155,7 @@ public class CompilerController {
     });
 
     // 初始化标签
-    updateSrcCodeLabel();
+    updatePosLabel(codeArea);
 
     // 初始化表格列与数据模型的绑定
     setupConstTable();
@@ -319,9 +325,9 @@ public class CompilerController {
     return text.replace("\t", "  ");
   }
 
-  private void updateSrcCodeLabel() {
-    int caretPos = codeArea.getCaretPosition();
-    String rawText = codeArea.getText();
+  private void updatePosLabel(TextArea area) {
+    int caretPos = area.getCaretPosition();
+    String rawText = area.getText();
 
     // 直接使用原始文本计算（已通过事件过滤器确保无制表符）
     List<String> paragraphs = rawText.lines().toList();
@@ -733,6 +739,10 @@ public class CompilerController {
 
   @FXML
   private void handleExportSyntaxTree(ActionEvent event) {
+    if (currentFile == null || isModified.getValue()) {
+      showAlert(AlertType.WARNING, "请先保存当前内容，再进行词法分析和语法分析。");
+      return;
+    }
     if (Parser.treeRoot == null) {
       showAlert(AlertType.WARNING, "请先进行语法分析再导出");
       return;
@@ -790,5 +800,13 @@ public class CompilerController {
     }
 
     return sb.toString();
+  }
+
+  public void handleGenerateAssembly(ActionEvent event) {
+    if (semanticAnalyzer == null || semanticAnalyzer.middleTableList.isEmpty()) {
+      showAlert(AlertType.WARNING, "请先进行语义分析。");
+      return;
+    }
+
   }
 }

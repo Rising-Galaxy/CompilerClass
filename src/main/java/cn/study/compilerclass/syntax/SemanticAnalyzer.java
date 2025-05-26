@@ -13,7 +13,9 @@ import java.util.List;
 import java.util.Set;
 import java.util.Stack;
 import java.util.stream.Collectors;
+import lombok.AllArgsConstructor;
 import lombok.Getter;
+import lombok.Setter;
 
 /**
  * 语义分析器
@@ -33,7 +35,7 @@ public class SemanticAnalyzer {
   private final List<VariableTableEntry> variableTable; // 变量表
   private final List<ConstTableEntry> constTable;     // 常量表
   private final List<FunctionTableEntry> functionTable; // 函数表
-  private final List<MiddleTableEntry> middleTableList; // 四元式表
+  public final List<MiddleTableEntry> middleTableList; // 四元式表
 
   private final Stack<Integer> scopeStack;            // 作用域栈
   // 用于跟踪变量使用情况
@@ -42,8 +44,14 @@ public class SemanticAnalyzer {
   private int nextScopeId;                            // 下一个作用域的ID
   private boolean mainFunctionFound;                  // 是否找到主函数
 
+  private final Result errorResult = new Result("", "error");
+
   // 用于记录中间代码序号
   private int midId = 0;
+  // 用于记录临时变量序号
+  private int tempId = 0;
+  // 延迟执行的任务列表
+  private final List<MiddleTableEntry> delayedTasks;
 
   /**
    * 构造函数
@@ -58,6 +66,7 @@ public class SemanticAnalyzer {
     this.constTable = new ArrayList<>();
     this.functionTable = new ArrayList<>();
     this.middleTableList = new ArrayList<>();
+    this.delayedTasks = new ArrayList<>();
     this.scopeStack = new Stack<>();
     this.usedVariables = new HashSet<>();
     this.declaredVariablesInScope = new HashSet<>(); // 初始化
@@ -173,12 +182,16 @@ public class SemanticAnalyzer {
         TokenTreeView valueNode = varNode.getChildren().getLast();
         if (isValueNode(valueNode)) {
           value = valueNode.getValue(); // 直接取值
+          emit("=", value, "", name);
         } else if (isExpressionNode(valueNode)) {
           value = "表达式";
           // 分析表达式并获取类型
-          String exprType = analyzeExpression(valueNode);
-          if (!exprType.equals(commonType)) {
-            error(String.format("[r: %d, c: %d]-%s初始化表达式类型不匹配：期望 '%s'，实际为 '%s'", valueNode.getRow(), valueNode.getCol(), isConst ? SymbolType.CONST : SymbolType.VAR, commonType, exprType));
+          Result result = analyzeExpression(valueNode);
+          if (!result.getType().equals(commonType)) {
+            error(String.format("[r: %d, c: %d]-%s初始化表达式类型不匹配：期望 '%s'，实际为 '%s'", valueNode.getRow(), valueNode.getCol(), isConst ? SymbolType.CONST : SymbolType.VAR, commonType, result.getType()));
+          } else {
+            // 生成中间代码
+            emit("=", result.getValue(), "", name);
           }
         }
       }
@@ -193,7 +206,7 @@ public class SemanticAnalyzer {
 
   // 分析主函数
   private void analyzeMainFunction(TokenTreeView functionNode) {
-    // info("开始分析主函数...");
+    emit("main", "", "", "");
     enterScope();
     // 遍历主函数体内的语句
     if (functionNode.getChildren() != null) {
@@ -202,7 +215,7 @@ public class SemanticAnalyzer {
       }
     }
     exitScope();
-    // info("主函数分析结束。");
+    emit("quit", "", "", "");
   }
 
   // 通用语句分析方法，可以被函数体、代码块等调用
@@ -210,18 +223,13 @@ public class SemanticAnalyzer {
     switch (statementNode.getNodeType()) {
       case DEFINITION -> analyzeDefinition(statementNode);
       case ASSIGNMENT_STMT -> analyzeAssignmentStatement(statementNode);
+      case FUNCTION_CALL -> analyzeFunctionCall(statementNode);
       case UNARY_EXPR -> {
-        String operandType;
         String value = statementNode.getValue();
-        if (value.contains("后缀") || value.contains("前缀")) {
-          if (statementNode.getValue().contains("后缀")) {
-            operandType = analyzeExpression(statementNode.getChildren().getFirst());
-          } else {
-            operandType = analyzeExpression(statementNode.getChildren().getLast());
-          }
-          if (!(operandType.equals("int") || operandType.equals("float"))) {
-            error(String.format("[r: %d, c: %d]-一元表达式类型不匹配，操作数为 %s", statementNode.getRow(), statementNode.getCol(), operandType));
-          }
+        if (value.contains("后缀")) {
+          analyzeSuffixStatement(statementNode);
+        } else if (value.contains("前缀")) {
+          analyzePrefixStatement(statementNode);
         } else {
           error(String.format("[r: %d, c: %d]-不是语句", statementNode.getRow(), statementNode.getCol()));
         }
@@ -230,6 +238,65 @@ public class SemanticAnalyzer {
       // case WHILE_STMT -> analyzeWhileStatement(statementNode);
       default -> error(String.format("[r: %d, c: %d]-不是语句", statementNode.getRow(), statementNode.getCol()));
     }
+    processDelayedTasks();
+  }
+
+  // 分析函数调用
+  private Result analyzeFunctionCall(TokenTreeView functionCallNode) {
+    ArrayList<TokenTreeView> children = functionCallNode.getChildren();
+    String functionName = children.getFirst().getValue();
+    FunctionTableEntry functionEntry = findFunction(functionName);
+    if (functionEntry == null) {
+      if (functionName.equals("input")) {
+        if (!children.getLast().getChildren().isEmpty()) {
+          error(String.format("[r: %d, c: %d]-函数 '%s' 调用参数过多", functionCallNode.getRow(), functionCallNode.getCol(), functionName));
+          return errorResult;
+        }
+        String midVar = newTmp();
+        emit("call", "input", "", midVar);
+        processDelayedTasks();
+        return new Result(midVar, "int");
+      } else if (functionName.equals("output")) {
+        if (children.getLast().getChildren().isEmpty()) {
+          error(String.format("[r: %d, c: %d]-函数 '%s' 调用缺少参数", functionCallNode.getRow(), functionCallNode.getCol(), functionName));
+          return errorResult;
+        } else if (children.getLast().getChildren().size() > 1) {
+          error(String.format("[r: %d, c: %d]-函数 '%s' 调用参数过多", functionCallNode.getRow(), functionCallNode.getCol(), functionName));
+          return errorResult;
+        }
+        TokenTreeView paramNode = children.getLast().getChildren().getFirst();
+        Result result = analyzeExpression(paramNode);
+        emit("para", result.getValue(), "", "");
+        String midVar = newTmp();
+        emit("call", "output", "", midVar);
+        processDelayedTasks();
+        return new Result(midVar, "void");
+      }
+      error(String.format("[r: %d, c: %d]-函数 '%s' 未定义", functionCallNode.getRow(), functionCallNode.getCol(), functionName));
+      return errorResult;
+    }
+    // 检查参数数量
+    List<TokenTreeView> paramNodes = children.getLast().getChildren();
+    if (paramNodes.size() != functionEntry.getParamCount()) {
+      error(String.format("[r: %d, c: %d]-函数 '%s' 调用参数数量不匹配，期望 %d 个，实际 %d 个", functionCallNode.getRow(), functionCallNode.getCol(), functionName, functionEntry.getParamCount(), paramNodes.size()));
+      return errorResult;
+    }
+    // 检查参数类型
+    for (int i = 0; i < paramNodes.size(); i++) {
+      TokenTreeView paramNode = paramNodes.get(i);
+      Result param = analyzeExpression(paramNode);
+      String expectedType = functionEntry.getParamTypes().get(i);
+      if (!param.getType().equals(expectedType)) {
+        error(String.format("[r: %d, c: %d]-函数 '%s' 参数类型不匹配，第 %d 个参数应为 '%s'，实际为 '%s'", functionCallNode.getRow(), functionCallNode.getCol(), functionName, i + 1, expectedType, param));
+      }
+      // 生成中间代码
+      emit("para", param.getValue(), "", "");
+    }
+    // 生成中间代码
+    String midVar = newTmp();
+    emit("call", functionName, "", midVar);
+    processDelayedTasks();
+    return new Result(midVar, functionEntry.getReturnType());
   }
 
   // 分析赋值语句
@@ -268,133 +335,292 @@ public class SemanticAnalyzer {
     usedVariables.add(varEntry);
 
     // 分析右侧表达式并进行类型检查
-    String rightValueType = analyzeExpression(rightOperandNode);
-    if (!varEntry.getType().equals(rightValueType)) {
+    Result rightValueType = analyzeExpression(rightOperandNode);
+    if (!varEntry.getType().equals(rightValueType.getType())) {
       error(String.format("[r: %d, c: %d]-类型不匹配：无法将类型 '%s' 赋值给类型为 '%s' 的变量 '%s'", rightOperandNode.getRow(), rightOperandNode.getCol(), rightValueType, varEntry.getType(), variableName));
     }
+
+    // 生成四元式
+    emit("=", rightValueType.getValue(), "", varEntry.getName());
+    processDelayedTasks();
   }
 
   // 分析表达式并返回表达式的类型
-  private String analyzeExpression(TokenTreeView expressionNode) {
+  private Result analyzeExpression(TokenTreeView expressionNode) {
     return switch (expressionNode.getNodeType()) {
       case LOGIC_EXPR -> analyzeLogicExpression(expressionNode);
       case RELATIONAL_EXPR -> analyzeRelationalExpression(expressionNode);
-      case EQUALITY_EXPR -> analyzeEqualityExpression(expressionNode);
       case ADDITION_EXPR -> analyzeAdditionExpression(expressionNode);
       case MULTIPLICATION_EXPR -> analyzeMultiplicationExpression(expressionNode);
       case UNARY_EXPR -> analyzeUnaryExpression(expressionNode);
       case PAREN_EXPR -> analyzeParenthesesExpression(expressionNode);
-      case LITERAL_INT -> "int";
-      case LITERAL_FLOAT -> "float";
-      case LITERAL_CHAR -> "char";
-      case LITERAL_BOOL -> "bool";
-      case IDENTIFIER -> {
+      case FUNCTION_CALL -> analyzeFunctionCall(expressionNode);
+      case LITERAL_INT -> new Result(expressionNode.getValue(), "int");
+      case LITERAL_FLOAT -> new Result(expressionNode.getValue(), "float");
+      case LITERAL_CHAR -> new Result(expressionNode.getValue(), "char");
+      case LITERAL_BOOL -> {
+        Result result = new Result(expressionNode.getValue(), "bool", midId, midId + 1);
+        emit("jnz", expressionNode.getValue(), "", "0");
+        emit("j", "", "", "0");
+        processDelayedTasks();
+        yield result;
+      }
+      case IDENTIFIER, PARAM -> {
         String identifierName = expressionNode.getValue();
         int col = expressionNode.getCol();
         int row = expressionNode.getRow();
         SymbolType symbolType = checkSymbolType(identifierName, getCurrentScopePath());
         if (symbolType == SymbolType.NONE) {
           error(String.format("[r: %d, c: %d]-变量 '%s' 未声明", row, col, identifierName));
-          yield "error";
+          yield errorResult;
         } else if (symbolType == SymbolType.FUNCTION) {
           error(String.format("[r: %d, c: %d]-非法调用函数 '%s'", row, col, identifierName));
-          yield "error";
+          yield errorResult;
         } else if (symbolType == SymbolType.CONST) {
           ConstTableEntry constEntry = findConst(identifierName, getCurrentScopePath());
           if (constEntry != null) {
-            yield constEntry.getType();
+            yield new Result(constEntry.getName(), constEntry.getType());
           }
-          yield "error";
+          yield errorResult;
         } else {
           VariableTableEntry varEntry = findVariable(identifierName, getCurrentScopePath());
           if (varEntry != null) {
+            if (varEntry.getType().equals("bool")) {
+              Result result = new Result(identifierName, "bool", midId, midId + 1);
+              emit("jnz", identifierName, "", "0");
+              emit("j", "", "", "0");
+              yield result;
+            }
             usedVariables.add(varEntry);
-            yield varEntry.getType();
+            yield new Result(varEntry.getName(), varEntry.getType());
           }
-          yield "error";
+          yield errorResult;
         }
       }
       default -> {
         error(String.format("[r: %d, c: %d]-未知表达式类型 '%s'", expressionNode.getRow(), expressionNode.getCol(), expressionNode.getNodeType()));
-        yield "error";
+        yield errorResult;
       }
     };
   }
 
-  // 分析逻辑表达式
-  private String analyzeLogicExpression(TokenTreeView logicNode) {
-    // 只能是布尔类型与布尔类型的逻辑表达式
-    String leftType = analyzeExpression(logicNode.getChildren().getFirst());
-    String rightType = analyzeExpression(logicNode.getChildren().getLast());
-    if (!(leftType.equals(rightType) && leftType.equals("bool"))) {
-      error(String.format("[r: %d, c: %d]-逻辑表达式类型不匹配，左侧为 %s，右侧为 %s", logicNode.getRow(), logicNode.getCol(), leftType, rightType));
+  // 分析后缀语句
+  private Result analyzeSuffixStatement(TokenTreeView suffixNode) {
+    TokenTreeView operandNode = suffixNode.getChildren().getFirst();
+    Result operandType = analyzeExpression(operandNode);
+    if (!operandType.getType().equals("int")) {
+      error(String.format("[r: %d, c: %d]-后缀表达式类型不正确，期望为 int，实际为 %s", suffixNode.getRow(), suffixNode.getCol(), operandType.getType()));
+      return errorResult;
     }
-    return "bool";
+    // 生成中间代码
+    String midVar = newTmp();
+    emitDelayed(opTrans(suffixNode.getChildren().getLast().getValue()), operandType.getValue(), "1", midVar);
+    emitDelayed("=", midVar, "", operandType.getValue());
+    return new Result(operandType.getValue(), operandType.getType());
+  }
+
+  // 分析前缀语句
+  private Result analyzePrefixStatement(TokenTreeView prefixNode) {
+    TokenTreeView operandNode = prefixNode.getChildren().getLast();
+    Result operandType = analyzeExpression(operandNode);
+    if (!operandType.getType().equals("int")) {
+      error(String.format("[r: %d, c: %d]-前缀表达式类型不正确，期望为 int，实际为 %s", prefixNode.getRow(), prefixNode.getCol(), operandType.getType()));
+      return errorResult;
+    }
+    // 生成中间代码
+    String midVar = newTmp();
+    emit(opTrans(prefixNode.getChildren().getFirst().getValue()), operandType.getValue(), "1", midVar);
+    emit("=", midVar, "", operandType.getValue());
+    return new Result(operandType.getValue(), operandType.getType());
+  }
+
+  // 自增自减转换操作符
+  private String opTrans(String op) {
+    return switch (op) {
+      case "++" -> "+";
+      case "--" -> "-";
+      default -> op;
+    };
+  }
+
+  // 分析逻辑表达式
+  private Result analyzeLogicExpression(TokenTreeView logicNode) {
+    // 只能是布尔类型与布尔类型的逻辑表达式
+    Result leftRes, rightRes;
+
+    // 生成中间代码
+    Result result;
+    if (logicNode.getValue().equals("!")) {
+      leftRes = analyzeExpression(logicNode.getChildren().getFirst());
+      result = new Result(newTmp(), "bool", leftRes.getFC(), leftRes.getTC());
+    } else {
+      if (logicNode.getValue().equals("&&")) {
+        leftRes = analyzeExpression(logicNode.getChildren().getFirst());
+        backPatch(leftRes.getTC(), String.valueOf(midId));
+        rightRes = analyzeExpression(logicNode.getChildren().getLast());
+        result = new Result(newTmp(), "bool", merge(leftRes.getFC(), rightRes.getFC()), rightRes.getTC());
+      } else {
+        leftRes = analyzeExpression(logicNode.getChildren().getFirst());
+        backPatch(leftRes.getFC(), String.valueOf(midId));
+        rightRes = analyzeExpression(logicNode.getChildren().getLast());
+        result = new Result(newTmp(), "bool", rightRes.getFC(), merge(leftRes.getTC(), rightRes.getTC()));
+      }
+      if (!(leftRes.getType().equals(rightRes.getType()) && leftRes.getType().equals("bool"))) {
+        error(String.format("[r: %d, c: %d]-逻辑表达式类型不匹配，左侧为 %s，右侧为 %s", logicNode.getRow(), logicNode.getCol(), leftRes, rightRes));
+        return errorResult;
+      }
+    }
+
+    processDelayedTasks();
+    return result;
   }
 
   // 分析关系表达式
-  private String analyzeRelationalExpression(TokenTreeView relationalNode) {
+  private Result analyzeRelationalExpression(TokenTreeView relationalNode) {
     // 只能是整数或浮点数与整数或浮点数的关系表达式
-    String leftType = analyzeExpression(relationalNode.getChildren().getFirst());
-    String rightType = analyzeExpression(relationalNode.getChildren().getLast());
+    Result leftType = analyzeExpression(relationalNode.getChildren().getFirst());
+    Result rightType = analyzeExpression(relationalNode.getChildren().getLast());
     if (!(leftType.equals(rightType) && (leftType.equals("int") || leftType.equals("float")))) {
       error(String.format("[r: %d, c: %d]-关系表达式类型不匹配，左侧为 %s，右侧为 %s", relationalNode.getRow(), relationalNode.getCol(), leftType, rightType));
+      return errorResult;
     }
-    return "bool";
-  }
-
-  // 分析相等性表达式
-  private String analyzeEqualityExpression(TokenTreeView equalityNode) {
-    // 只能是整数或浮点数与整数或浮点数的相等性表达式
-    String leftType = analyzeExpression(equalityNode.getChildren().getFirst());
-    String rightType = analyzeExpression(equalityNode.getChildren().getLast());
-    if (!(leftType.equals(rightType) && (leftType.equals("int") || leftType.equals("float")))) {
-      error(String.format("[r: %d, c: %d]-相等性表达式类型不匹配，左侧为 %s，右侧为 %s", equalityNode.getRow(), equalityNode.getCol(), leftType, rightType));
-    }
-    return "bool";
+    Result result = new Result(newTmp(), "bool", midId, midId + 1);
+    emitDelayed("j" + relationalNode.getValue(), leftType.getValue(), rightType.getValue(), "0");
+    emitDelayed("j", "", "", "0");
+    processDelayedTasks();
+    return result;
   }
 
   // 分析加减表达式
-  private String analyzeAdditionExpression(TokenTreeView additionNode) {
+  private Result analyzeAdditionExpression(TokenTreeView additionNode) {
     // 只能是整数或浮点数与整数或浮点数的加法表达式
-    String leftType = analyzeExpression(additionNode.getChildren().getFirst());
-    String rightType = analyzeExpression(additionNode.getChildren().getLast());
-    if (!(leftType.equals(rightType) && (leftType.equals("int") || leftType.equals("float")))) {
-      error(String.format("[r: %d, c: %d]-加减表达式类型不匹配，左侧为 %s，右侧为 %s", additionNode.getRow(), additionNode.getCol(), leftType, rightType));
+    Result leftRes = analyzeExpression(additionNode.getChildren().getFirst());
+    Result rightRes = analyzeExpression(additionNode.getChildren().getLast());
+    if (!(leftRes.getType().equals(rightRes.getType()) && (leftRes.getType().equals("int") || leftRes.getType()
+                                                                                                     .equals("float")))) {
+      error(String.format("[r: %d, c: %d]-加减表达式类型不匹配，左侧为 %s，右侧为 %s", additionNode.getRow(), additionNode.getCol(), leftRes, rightRes));
+      return errorResult;
     }
-    return leftType;
+    // 生成四元式
+    Result result = new Result(newTmp(), leftRes.getType());
+    emit("+", leftRes.getValue(), rightRes.getValue(), result.getValue());
+    processDelayedTasks();
+    return result;
   }
 
   // 分析乘除表达式
-  private String analyzeMultiplicationExpression(TokenTreeView multiplicationNode) {
+  private Result analyzeMultiplicationExpression(TokenTreeView multiplicationNode) {
     // 只能是整数或浮点数与整数或浮点数的乘法表达式
-    String leftType = analyzeExpression(multiplicationNode.getChildren().getFirst());
-    String rightType = analyzeExpression(multiplicationNode.getChildren().getLast());
-    if (!(leftType.equals(rightType) && (leftType.equals("int") || leftType.equals("float")))) {
-      error(String.format("[r: %d, c: %d]-乘除表达式类型不匹配，左侧为 %s，右侧为 %s", multiplicationNode.getRow(), multiplicationNode.getCol(), leftType, rightType));
+    Result leftRes = analyzeExpression(multiplicationNode.getChildren().getFirst());
+    Result rightRes = analyzeExpression(multiplicationNode.getChildren().getLast());
+    if (!(leftRes.getType().equals(rightRes.getType()) && (leftRes.getType().equals("int") || leftRes.getType()
+                                                                                                     .equals("float")))) {
+      error(String.format("[r: %d, c: %d]-乘除表达式类型不匹配，左侧为 %s，右侧为 %s", multiplicationNode.getRow(), multiplicationNode.getCol(), leftRes, rightRes));
+      return errorResult;
     }
-    return leftType;
+    // 生成四元式
+    Result result = new Result(newTmp(), leftRes.getType());
+    emit("*", leftRes.getValue(), rightRes.getValue(), result.getValue());
+    processDelayedTasks();
+    return result;
   }
 
   // 分析一元表达式
-  private String analyzeUnaryExpression(TokenTreeView unaryNode) {
+  private Result analyzeUnaryExpression(TokenTreeView unaryNode) {
     // 只能是整数或浮点数的一元表达式
-    String operandType;
+    Result operandType;
     if (unaryNode.getValue().contains("后缀")) {
-      operandType = analyzeExpression(unaryNode.getChildren().getFirst());
+      operandType = analyzeSuffixStatement(unaryNode);
+    } else if (unaryNode.getValue().contains("前缀")) {
+      operandType = analyzePrefixStatement(unaryNode);
     } else {
       operandType = analyzeExpression(unaryNode.getChildren().getLast());
-    }
-    if (!(operandType.equals("int") || operandType.equals("float"))) {
-      error(String.format("[r: %d, c: %d]-一元表达式类型不匹配，操作数为 %s", unaryNode.getRow(), unaryNode.getCol(), operandType));
+      if (!(operandType.getType().equals("int") || operandType.getType().equals("float"))) {
+        error(String.format("[r: %d, c: %d]-一元表达式类型不匹配，操作数为 %s", unaryNode.getRow(), unaryNode.getCol(), operandType));
+        return errorResult;
+      } else {
+        // 生成中间代码
+        if (unaryNode.getValue().equals("-")) {
+          emit("-", "0", operandType.getValue(), newTmp());
+          operandType.setValue(newTmp());
+        }
+      }
+      processDelayedTasks();
     }
     return operandType;
   }
 
   // 分析括号表达式
-  private String analyzeParenthesesExpression(TokenTreeView parenthesesNode) {
+  private Result analyzeParenthesesExpression(TokenTreeView parenthesesNode) {
+    processDelayedTasks();
     // 括号表达式的类型取决于其内部表达式的类型
     return analyzeExpression(parenthesesNode.getChildren().get(1));
+  }
+
+  // 提交一条中间代码，返回生成的中间代码的索引
+  private int emit(String op, String arg1, String arg2, String result) {
+    middleTableList.add(new MiddleTableEntry(midId, op, arg1, arg2, result));
+    return midId++;
+  }
+
+  private ArrayList<Integer> emitJmp(String op, String arg1, String arg2, String result) {
+    ArrayList<Integer> list = new ArrayList<>();
+    list.add(midId);
+    middleTableList.add(new MiddleTableEntry(midId++, op, arg1, arg2, result));
+    return list;
+  }
+
+  private int emit(MiddleTableEntry entry) {
+    entry.setId(midId);
+    middleTableList.add(entry);
+    return midId++;
+  }
+
+  // 合并两个四元式链
+  private int merge(int P1, int P2) {
+    if (P2 == 0) {
+      return P1;
+    } else {
+      int P = P2;
+      while (Integer.parseInt(middleTableList.get(P).getResult()) != 0) {
+        P = Integer.parseInt(middleTableList.get(P).getResult());
+      }
+      middleTableList.get(P).setResult(String.valueOf(P1));
+      return P2;
+    }
+  }
+
+  // 提交一条延迟的中间代码
+  private void emitDelayed(String op, String arg1, String arg2, String result) {
+    delayedTasks.add(new MiddleTableEntry(-1, op, arg1, arg2, result));
+  }
+
+  // 处理延迟任务
+  private void processDelayedTasks() {
+    for (MiddleTableEntry task : delayedTasks) {
+      emit(task);
+    }
+    delayedTasks.clear();
+  }
+
+  // 回填
+  private void backPatch(int P, String t) {
+    int Q = middleTableList.get(P).getId();
+    while (Q != 0) {
+      int m = Integer.parseInt(middleTableList.get(Q).getResult());
+      middleTableList.get(Q).setResult(t);
+      Q = m;
+    }
+  }
+
+  // 生成临时变量
+  private String newTmp() {
+    return "$_t" + tempId++;
+  }
+
+  // 获取上一临时变量
+  private String getLastMidVar() {
+    return "$_t" + (tempId - 1);
   }
 
   // 检查标识符是否已经在对应符号表中声明
@@ -438,7 +664,7 @@ public class SemanticAnalyzer {
   // 检查是否为表达式节点
   private boolean isExpressionNode(TokenTreeView node) {
     NodeType type = node.getNodeType();
-    return type == NodeType.EXPRESSION || type == NodeType.BINARY_EXPR || type == NodeType.UNARY_EXPR || type == NodeType.PAREN_EXPR || type == NodeType.RELATIONAL_EXPR || type == NodeType.LOGIC_EXPR || type == NodeType.EQUALITY_EXPR || type == NodeType.ADDITION_EXPR || type == NodeType.MULTIPLICATION_EXPR;
+    return type == NodeType.EXPRESSION || type == NodeType.BINARY_EXPR || type == NodeType.UNARY_EXPR || type == NodeType.PAREN_EXPR || type == NodeType.RELATIONAL_EXPR || type == NodeType.LOGIC_EXPR || type == NodeType.ADDITION_EXPR || type == NodeType.MULTIPLICATION_EXPR || type == NodeType.FUNCTION_CALL;
   }
 
   // 辅助方法：获取当前作用域路径
@@ -581,4 +807,23 @@ public class SemanticAnalyzer {
     }
 
   }
+
+  @Getter
+  @AllArgsConstructor
+  @Setter
+  private class Result {
+
+    private String value;
+    private String type;
+    private int TC;
+    private int FC;
+
+    public Result(String value, String type) {
+      this.value = value;
+      this.type = type;
+      this.TC = 0;
+      this.FC = 0;
+    }
+  }
 }
+

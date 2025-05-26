@@ -22,7 +22,7 @@ public class SyntaxTreeStyle {
       case ERROR -> "error";
       case PROGRAM -> "root-node";
       case FUNCTION, BLOCK, STATEMENT, ASSIGNMENT_STMT, IF_STMT, WHILE_STMT, DO_WHILE_STMT, RETURN_STMT, EXPRESSION,
-           BINARY_EXPR, UNARY_EXPR, PAREN_EXPR, RELATIONAL_EXPR, LOGIC_EXPR, EQUALITY_EXPR, ADDITION_EXPR,
+           BINARY_EXPR, UNARY_EXPR, PAREN_EXPR, RELATIONAL_EXPR, LOGIC_EXPR, ADDITION_EXPR,
            MULTIPLICATION_EXPR -> "middle-node";
       case DEFINITION, DECLARATION -> "declaration-node";
       case KEYWORD -> "keyword-node";
