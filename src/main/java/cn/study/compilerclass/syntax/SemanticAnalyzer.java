@@ -32,10 +32,10 @@ public class SemanticAnalyzer {
   private final List<String> warnings;
   public boolean hasError;
 
-  private final List<VariableTableEntry> variableTable; // 变量表
-  private final List<ConstTableEntry> constTable;     // 常量表
-  private final List<FunctionTableEntry> functionTable; // 函数表
-  public final List<MiddleTableEntry> middleTableList; // 四元式表
+  public final ArrayList<VariableTableEntry> variableTable; // 变量表
+  public final ArrayList<ConstTableEntry> constTable;     // 常量表
+  public final ArrayList<FunctionTableEntry> functionTable; // 函数表
+  public final ArrayList<MiddleTableEntry> middleTableList; // 四元式表
 
   private final Stack<Integer> scopeStack;            // 作用域栈
   // 用于跟踪变量使用情况
@@ -247,16 +247,16 @@ public class SemanticAnalyzer {
     String functionName = children.getFirst().getValue();
     FunctionTableEntry functionEntry = findFunction(functionName);
     if (functionEntry == null) {
-      if (functionName.equals("input")) {
+      if (functionName.equals("read")) {
         if (!children.getLast().getChildren().isEmpty()) {
           error(String.format("[r: %d, c: %d]-函数 '%s' 调用参数过多", functionCallNode.getRow(), functionCallNode.getCol(), functionName));
           return errorResult;
         }
         String midVar = newTmp();
-        emit("call", "input", "", midVar);
+        emit("call", "read", "", midVar);
         processDelayedTasks();
         return new Result(midVar, "int");
-      } else if (functionName.equals("output")) {
+      } else if (functionName.equals("write")) {
         if (children.getLast().getChildren().isEmpty()) {
           error(String.format("[r: %d, c: %d]-函数 '%s' 调用缺少参数", functionCallNode.getRow(), functionCallNode.getCol(), functionName));
           return errorResult;
@@ -268,7 +268,7 @@ public class SemanticAnalyzer {
         Result result = analyzeExpression(paramNode);
         emit("para", result.getValue(), "", "");
         String midVar = newTmp();
-        emit("call", "output", "", midVar);
+        emit("call", "write", "", midVar);
         processDelayedTasks();
         return new Result(midVar, "void");
       }
@@ -561,13 +561,6 @@ public class SemanticAnalyzer {
   private int emit(String op, String arg1, String arg2, String result) {
     middleTableList.add(new MiddleTableEntry(midId, op, arg1, arg2, result));
     return midId++;
-  }
-
-  private ArrayList<Integer> emitJmp(String op, String arg1, String arg2, String result) {
-    ArrayList<Integer> list = new ArrayList<>();
-    list.add(midId);
-    middleTableList.add(new MiddleTableEntry(midId++, op, arg1, arg2, result));
-    return list;
   }
 
   private int emit(MiddleTableEntry entry) {

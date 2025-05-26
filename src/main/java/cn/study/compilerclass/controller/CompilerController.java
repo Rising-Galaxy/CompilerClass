@@ -1,5 +1,6 @@
 package cn.study.compilerclass.controller;
 
+import cn.study.compilerclass.assembly.AssemblyGenerator;
 import cn.study.compilerclass.lexer.Lexer;
 import cn.study.compilerclass.lexer.Token;
 import cn.study.compilerclass.lexer.TokenView;
@@ -17,6 +18,7 @@ import com.google.gson.GsonBuilder;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.prefs.Preferences;
@@ -32,6 +34,8 @@ import javafx.scene.control.*;
 import javafx.scene.control.Alert.AlertType;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.input.Clipboard;
+import javafx.scene.input.ClipboardContent;
+import javafx.scene.input.DataFormat;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyCodeCombination;
 import javafx.scene.input.KeyCombination;
@@ -803,10 +807,20 @@ public class CompilerController {
   }
 
   public void handleGenerateAssembly(ActionEvent event) {
-    if (semanticAnalyzer == null || semanticAnalyzer.middleTableList.isEmpty()) {
-      showAlert(AlertType.WARNING, "请先进行语义分析。");
+    if (semanticAnalyzer == null || semanticAnalyzer.middleTableList.isEmpty() || semanticAnalyzer.hasError) {
+      showAlert(AlertType.WARNING, "请先进行并通过语义分析。");
       return;
     }
 
+    mainTabPane.getSelectionModel().select(4);
+
+    String assemblyCode = new AssemblyGenerator(semanticAnalyzer.constTable, semanticAnalyzer.variableTable, semanticAnalyzer.middleTableList).generateAssembly();
+    resArea.setText(assemblyCode);
+    // 粘贴到粘贴板
+    Clipboard clipboard = Clipboard.getSystemClipboard();
+    ClipboardContent content = new ClipboardContent();
+    content.putString(assemblyCode);
+    clipboard.setContent(content);
+    // showAlert(AlertType.INFORMATION, "汇编代码已复制到粘贴板。");
   }
 }
