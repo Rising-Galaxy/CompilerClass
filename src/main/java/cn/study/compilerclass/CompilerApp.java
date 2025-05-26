@@ -17,8 +17,11 @@ public class CompilerApp extends Application {
     Parent root = new FXMLLoader(CompilerApp.class.getResource("my-compiler.fxml")).load();
     Scene scene = new Scene(root);
     Font.loadFont(getClass().getResourceAsStream("/cn/study/compilerclass/font/MapleMonoNormal-NF-CN-Regular.ttf"), 16);
-    Application.setUserAgentStylesheet(String.valueOf(CompilerApp.class.getResource("css/dracula.css")));
-    scene.getStylesheets().add(String.valueOf(CompilerApp.class.getResource("css/style.css")));
+    // 修改CSS加载方式
+    String dracula = CompilerApp.class.getResource("css/dracula.css").toExternalForm();
+    String style = CompilerApp.class.getResource("css/style.css").toExternalForm();
+    Application.setUserAgentStylesheet(dracula);
+    scene.getStylesheets().add(style);
     stage.setTitle("景明编译器");
     stage.setScene(scene);
     stage.setMaximized(true);

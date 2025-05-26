@@ -18,4 +18,5 @@ module cn.study.compilerclass {
   opens cn.study.compilerclass.lexer to javafx.base, com.google.gson;
   exports cn.study.compilerclass;
   exports cn.study.compilerclass.controller;
+  exports cn.study.compilerclass.model;
 }

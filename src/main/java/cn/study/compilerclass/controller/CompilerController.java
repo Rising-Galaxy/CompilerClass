@@ -1,19 +1,26 @@
 package cn.study.compilerclass.controller;
 
+import cn.study.compilerclass.assembly.AssemblyGenerator;
 import cn.study.compilerclass.lexer.Lexer;
 import cn.study.compilerclass.lexer.Token;
 import cn.study.compilerclass.lexer.TokenView;
 import cn.study.compilerclass.model.FunctionTableEntry;
-import cn.study.compilerclass.model.SymbolTableEntry;
+import cn.study.compilerclass.model.ConstTableEntry;
+import cn.study.compilerclass.model.MiddleTableEntry;
 import cn.study.compilerclass.model.VariableTableEntry;
 import cn.study.compilerclass.parser.Parser;
+import cn.study.compilerclass.parser.TokenTreeView;
 import cn.study.compilerclass.syntax.SemanticAnalyzer;
 import cn.study.compilerclass.utils.Debouncer;
 import cn.study.compilerclass.utils.OutInfo;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.prefs.Preferences;
 import java.util.stream.Collectors;
 import javafx.application.Platform;
@@ -27,21 +34,18 @@ import javafx.scene.control.*;
 import javafx.scene.control.Alert.AlertType;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.input.Clipboard;
+import javafx.scene.input.ClipboardContent;
+import javafx.scene.input.DataFormat;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyCodeCombination;
 import javafx.scene.input.KeyCombination;
 import javafx.scene.input.KeyEvent;
-import javafx.scene.layout.HBox;
-import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
 import java.io.File;
-import java.io.IOException;
 import java.nio.file.Files;
-import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 
 import static cn.study.compilerclass.CompilerApp.stage;
-import static cn.study.compilerclass.parser.Parser.treeRoot;
 
 @Slf4j
 public class CompilerController {
@@ -51,17 +55,15 @@ public class CompilerController {
   private SimpleBooleanProperty isModified = new SimpleBooleanProperty(false);
 
   @FXML
-  private TableView<SymbolTableEntry> symbolTable;
+  private TableView<ConstTableEntry> constTable;
   @FXML
-  private TableColumn<SymbolTableEntry, String> symbolNameColumn;
+  private TableColumn<ConstTableEntry, String> constNameColumn;
   @FXML
-  private TableColumn<SymbolTableEntry, String> symbolTypeColumn;
+  private TableColumn<ConstTableEntry, String> constTypeColumn;
   @FXML
-  private TableColumn<SymbolTableEntry, String> symbolScopeColumn;
+  private TableColumn<ConstTableEntry, String> constScopeColumn;
   @FXML
-  private TableColumn<SymbolTableEntry, Integer> symbolLineColumn;
-  @FXML
-  private TableColumn<SymbolTableEntry, String> symbolInfoColumn;
+  private TableColumn<ConstTableEntry, String> constValueColumn;
   @FXML
   private TableView<VariableTableEntry> variableTable;
   @FXML
@@ -71,9 +73,7 @@ public class CompilerController {
   @FXML
   private TableColumn<VariableTableEntry, String> varScopeColumn;
   @FXML
-  private TableColumn<VariableTableEntry, String> varInitColumn;
-  @FXML
-  private TableColumn<VariableTableEntry, Boolean> varUsedColumn;
+  private TableColumn<VariableTableEntry, String> varValueColumn;
   @FXML
   private TableView<FunctionTableEntry> functionTable;
   @FXML
@@ -81,17 +81,31 @@ public class CompilerController {
   @FXML
   private TableColumn<FunctionTableEntry, String> funcReturnTypeColumn;
   @FXML
-  private TableColumn<FunctionTableEntry, String> funcParamsColumn;
+  private TableColumn<FunctionTableEntry, String> funcParamTypeColumn;
   @FXML
-  private TableColumn<FunctionTableEntry, Integer> funcLineColumn;
+  private TableColumn<FunctionTableEntry, Integer> funcParamCountColumn;
   @FXML
-  private TableColumn<FunctionTableEntry, Integer> funcCalledColumn;
+  private TableView<MiddleTableEntry> middleTable;
+  @FXML
+  private TableColumn<MiddleTableEntry, Integer> midIdColumn;
+  @FXML
+  private TableColumn<MiddleTableEntry, String> midOpColumn;
+  @FXML
+  private TableColumn<MiddleTableEntry, String> midArg1Column;
+  @FXML
+  private TableColumn<MiddleTableEntry, String> midArg2Column;
+  @FXML
+  private TableColumn<MiddleTableEntry, String> midResultColumn;
   @FXML
   private TextArea codeArea;
+  @FXML
+  private TextArea resArea;
   @FXML
   private TextArea outArea;
   @FXML
   private TextArea lineNumbersCode;
+  @FXML
+  private TextArea lineNumbersRes;
   @FXML
   private Menu editMenu;
   @FXML
@@ -116,16 +130,16 @@ public class CompilerController {
   private Label fileLabel;
   private String statusLabel = "源程序";
   private int lineWidth = 2;
-  private Debouncer debouncer = new Debouncer(300);
+  private final Debouncer debouncer = new Debouncer(300);
   private String fileTooltip = "未命名文件";
   private Tooltip tooltip;
-
   @FXML
   private TabPane mainTabPane;
 
   @FXML
   public void initialize() {
     setupLineNumbers(codeArea, lineNumbersCode);
+    setupLineNumbers(resArea, lineNumbersRes);
     codeArea.textProperty().addListener((obs, old, val) -> markModified());
     codeArea.setFocusTraversable(true);
     setupContextMenu(codeArea);
@@ -133,7 +147,8 @@ public class CompilerController {
     setupFileMenu();
 
     // 添加光标位置监听器
-    codeArea.caretPositionProperty().addListener((obs, oldPos, newPos) -> updateSrcCodeLabel());
+    codeArea.caretPositionProperty().addListener((obs, oldPos, newPos) -> updatePosLabel(codeArea));
+    resArea.caretPositionProperty().addListener((obs, oldPos, newPos) -> updatePosLabel(resArea));
 
     // 添加 Tab 键拦截器
     codeArea.addEventFilter(KeyEvent.KEY_PRESSED, event -> {
@@ -144,12 +159,13 @@ public class CompilerController {
     });
 
     // 初始化标签
-    updateSrcCodeLabel();
+    updatePosLabel(codeArea);
 
     // 初始化表格列与数据模型的绑定
-    setupSymbolTable();
+    setupConstTable();
     setupVariableTable();
     setupFunctionTable();
+    setupMiddleTable();
 
     isModified.addListener((obs, oldVal, newVal) -> {
       if (newVal) {
@@ -188,28 +204,33 @@ public class CompilerController {
     });
   }
 
-  private void setupSymbolTable() {
-    symbolNameColumn.setCellValueFactory(new PropertyValueFactory<>("name"));
-    symbolTypeColumn.setCellValueFactory(new PropertyValueFactory<>("type"));
-    symbolScopeColumn.setCellValueFactory(new PropertyValueFactory<>("scope"));
-    symbolLineColumn.setCellValueFactory(new PropertyValueFactory<>("line"));
-    symbolInfoColumn.setCellValueFactory(new PropertyValueFactory<>("info"));
+  private void setupConstTable() {
+    constNameColumn.setCellValueFactory(new PropertyValueFactory<>("name"));
+    constTypeColumn.setCellValueFactory(new PropertyValueFactory<>("type"));
+    constScopeColumn.setCellValueFactory(new PropertyValueFactory<>("scope"));
+    constValueColumn.setCellValueFactory(new PropertyValueFactory<>("value"));
   }
 
   private void setupVariableTable() {
     varNameColumn.setCellValueFactory(new PropertyValueFactory<>("name"));
     varTypeColumn.setCellValueFactory(new PropertyValueFactory<>("type"));
     varScopeColumn.setCellValueFactory(new PropertyValueFactory<>("scope"));
-    varInitColumn.setCellValueFactory(new PropertyValueFactory<>("initialValue"));
-    varUsedColumn.setCellValueFactory(new PropertyValueFactory<>("used"));
+    varValueColumn.setCellValueFactory(new PropertyValueFactory<>("value"));
   }
 
   private void setupFunctionTable() {
     funcNameColumn.setCellValueFactory(new PropertyValueFactory<>("name"));
     funcReturnTypeColumn.setCellValueFactory(new PropertyValueFactory<>("returnType"));
-    funcParamsColumn.setCellValueFactory(new PropertyValueFactory<>("parameters"));
-    funcLineColumn.setCellValueFactory(new PropertyValueFactory<>("line"));
-    funcCalledColumn.setCellValueFactory(new PropertyValueFactory<>("callCount"));
+    funcParamTypeColumn.setCellValueFactory(new PropertyValueFactory<>("listString"));
+    funcParamCountColumn.setCellValueFactory(new PropertyValueFactory<>("paramCount"));
+  }
+
+  private void setupMiddleTable() {
+    midIdColumn.setCellValueFactory(new PropertyValueFactory<>("id"));
+    midOpColumn.setCellValueFactory(new PropertyValueFactory<>("op"));
+    midArg1Column.setCellValueFactory(new PropertyValueFactory<>("arg1"));
+    midArg2Column.setCellValueFactory(new PropertyValueFactory<>("arg2"));
+    midResultColumn.setCellValueFactory(new PropertyValueFactory<>("result"));
   }
 
   @FXML
@@ -218,10 +239,17 @@ public class CompilerController {
       showAlert(AlertType.WARNING, "请先保存当前内容，再进行语法分析。");
       return;
     }
+    // 确保样式类被应用
+    resultTreeView.getStyleClass().add("result-tree");
     OutInfo outInfo = new OutInfo();
     Parser parser = new Parser(currentFile.getParent() + File.separator + "lex_tokens.json", outInfo);
     parser.parse();
-    parser.getTreeView(resultTreeView);
+    // treeRoot 应该在 parser.parse() 后被赋值
+    if (Parser.treeRoot != null) {
+      parser.getTreeView(resultTreeView);
+    } else {
+      log.warn("语法分析后 treeRoot 仍为 null");
+    }
 
     // 切换到语法分析选项卡
     mainTabPane.getSelectionModel().select(1);
@@ -236,10 +264,11 @@ public class CompilerController {
     new Alert(type, message, ButtonType.OK).showAndWait();
   }
 
+  // 语义分析
   @FXML
   private void handleSemanticAnalysis(ActionEvent event) {
     if (currentFile == null || isModified.getValue()) {
-      showAlert(AlertType.WARNING, "请先保存当前内容，再进行语义分析。");
+      showAlert(AlertType.WARNING, "请先保存当前内容，再依次进行词法、语法、语义分析。");
       return;
     }
     OutInfo outInfo = new OutInfo();
@@ -249,18 +278,21 @@ public class CompilerController {
     mainTabPane.getSelectionModel().select(2);
 
     // 如果有语法树，则进行语义分析
-    if (treeRoot != null) {
-      semanticAnalyzer.analyze(treeRoot);
+    if (Parser.treeRoot != null) { // 使用 Parser.treeRoot
+      semanticAnalyzer.analyze(Parser.treeRoot); // 使用 Parser.treeRoot
 
       // 获取分析结果并转换为ObservableList
-      ObservableList<SymbolTableEntry> symbolData = FXCollections.observableArrayList(semanticAnalyzer.getSymbolTableEntries());
-      setSymbolTableData(symbolData);
+      ObservableList<ConstTableEntry> constData = FXCollections.observableArrayList(semanticAnalyzer.getConstTableEntries());
+      setConstTableData(constData);
 
       ObservableList<VariableTableEntry> variableData = FXCollections.observableArrayList(semanticAnalyzer.getVariableTableEntries());
       setVariableTableData(variableData);
 
       ObservableList<FunctionTableEntry> functionData = FXCollections.observableArrayList(semanticAnalyzer.getFunctionTableEntries());
       setFunctionTableData(functionData);
+
+      ObservableList<MiddleTableEntry> middleData = FXCollections.observableArrayList(semanticAnalyzer.getMiddleTableEntries());
+      setMiddleTableData(middleData);
 
       if (!outInfo.isEmpty()) {
         outArea.setText(outInfo.toString());
@@ -276,9 +308,8 @@ public class CompilerController {
     }
   }
 
-  // 添加方法用于从编译器控制器接收语义分析数据
-  public void setSymbolTableData(ObservableList<SymbolTableEntry> data) {
-    symbolTable.setItems(data);
+  public void setConstTableData(ObservableList<ConstTableEntry> data) {
+    constTable.setItems(data);
   }
 
   public void setVariableTableData(ObservableList<VariableTableEntry> data) {
@@ -289,14 +320,18 @@ public class CompilerController {
     functionTable.setItems(data);
   }
 
+  public void setMiddleTableData(ObservableList<MiddleTableEntry> data) {
+    middleTable.setItems(data);
+  }
+
   // 统一处理制表符替换
   private String replaceTabs(String text) {
     return text.replace("\t", "  ");
   }
 
-  private void updateSrcCodeLabel() {
-    int caretPos = codeArea.getCaretPosition();
-    String rawText = codeArea.getText();
+  private void updatePosLabel(TextArea area) {
+    int caretPos = area.getCaretPosition();
+    String rawText = area.getText();
 
     // 直接使用原始文本计算（已通过事件过滤器确保无制表符）
     List<String> paragraphs = rawText.lines().toList();
@@ -325,7 +360,7 @@ public class CompilerController {
     MenuItem openItem = fileMenuItems.get(1);
     MenuItem saveItem = fileMenuItems.get(3);
     MenuItem saveAsItem = fileMenuItems.get(4);
-    MenuItem closeItem = fileMenuItems.get(6);
+    MenuItem closeItem = fileMenuItems.get(6); // 索引可能需要根据FXML调整
 
     bindKeyAndEvent(newItem, KeyCodeCombination.keyCombination("Ctrl+N"), this::handleNew);
     bindKeyAndEvent(openItem, KeyCodeCombination.keyCombination("Ctrl+O"), this::handleOpen);
@@ -534,13 +569,6 @@ public class CompilerController {
     contentArea.textProperty().addListener((obs, old, val) -> updateLineNumbers(contentArea, lineNumberArea));
     contentArea.scrollTopProperty().addListener((obs, old, val) -> lineNumberArea.setScrollTop(val.doubleValue()));
 
-    // 确保正确的焦点行为
-    // contentArea.addEventHandler(javafx.scene.input.MouseEvent.MOUSE_CLICKED, e -> {
-    //   if (!contentArea.isFocused() && contentArea.isEditable()) {
-    //     contentArea.requestFocus();
-    //     log.info("请求焦点到区域: {}", contentArea.getId());
-    //   }
-    // });
   }
 
   private void updateLineNumbers(TextArea contentArea, TextArea lineNumberArea) {
@@ -559,57 +587,42 @@ public class CompilerController {
   }
 
   public boolean confirmSave() {
-    if (!isModified.getValue()) {
-      return true; // 如果文件未被修改，则无需保存
+    if (!isModified.get()) {
+      return true; // 如果未修改，则无需确认
     }
-    log.info("事件开始-确认保存");
-    Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
-    alert.setTitle("未保存的更改");
-    alert.setHeaderText("当前文件包含未保存的更改，是否保存？");
-
-    // 设置提示框的按钮选项
-    alert.getButtonTypes().setAll(ButtonType.YES,   // 保存更改
-        ButtonType.NO,    // 不保存更改
-        ButtonType.CANCEL // 取消操作
-    );
-
+    Alert alert = new Alert(AlertType.CONFIRMATION, "是否保存对当前文件的更改?", ButtonType.YES, ButtonType.NO, ButtonType.CANCEL);
     Optional<ButtonType> result = alert.showAndWait();
-    if (result.get() == ButtonType.YES) {
-      log.info("事件跳转-确认保存-保存");
-      return saveFile(); // 用户选择保存
-    }
-    log.info("事件结束-确认保存-不保存");
-    return result.get() == ButtonType.NO; // 用户选择不保存
-  }
-
-  private boolean saveFile() {
-    if (currentFile == null) {
-      return saveAs();
-    }
-    log.info("事件开始-保存");
-    try {
-      String content = replaceTabs(codeArea.getText()); // 二次验证替换
-      Files.writeString(currentFile.toPath(), content);
-      isModified.set(false);
-      // updateStatusLabel();
-      log.info("事件结束-保存-成功");
-      return true;
-    } catch (IOException e) {
-      log.error("事件结束-保存-失败", e);
-      showAlert(AlertType.ERROR, "无法保存文件: " + e.getMessage());
-      return false;
+    if (result.isPresent() && result.get() == ButtonType.YES) {
+      return saveFile();
+    } else {
+      return result.isPresent() && result.get() == ButtonType.NO;
     }
   }
 
   @FXML
   private void handleNew(ActionEvent event) {
     if (confirmSave()) {
-      log.info("事件开始-新建");
       codeArea.clear();
       currentFile = null;
-      isModified.set(false);
-      // updateStatusLabel();
-      log.info("事件结束-新建");
+      markUnmodified();
+      statusLabel = "未命名文件";
+      fileTooltip = "未命名文件";
+      fileLabel.setText(statusLabel);
+      tooltip.setText(fileTooltip);
+      outArea.clear();
+      resultTable.getItems().clear();
+      if (resultTreeView.getRoot() != null) {
+        resultTreeView.getRoot().getChildren().clear();
+      }
+      // 清空符号表等
+      if (constTable != null) {
+        constTable.getItems().clear();
+      }
+      if (variableTable != null) {
+        variableTable.getItems().clear();
+      }
+      // if (functionTable != null) functionTable.getItems().clear();
+      Parser.treeRoot = null; // 清空静态语法树
     }
   }
 
@@ -618,51 +631,84 @@ public class CompilerController {
     if (!confirmSave()) {
       return;
     }
-    log.info("事件开始-打开");
-    FileChooser chooser = new FileChooser();
-    chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Star Files", "*.star"));
-
-    // 获取上次保存的路径
+    FileChooser fileChooser = new FileChooser();
+    fileChooser.setTitle("打开文件");
+    // 从首选项加载上次打开的目录
     Preferences prefs = Preferences.userNodeForPackage(CompilerController.class);
-    String lastPath = prefs.get("lastOpenPath", null);
-    if (lastPath != null) {
-      log.info("上次打开路径: {}", lastPath);
-      chooser.setInitialDirectory(new File(lastPath));
+    String lastUsedDirectory = prefs.get("lastUsedOpenDirectory", System.getProperty("user.home"));
+    File initialDirectory = new File(lastUsedDirectory);
+    if (initialDirectory.exists() && initialDirectory.isDirectory()) {
+      fileChooser.setInitialDirectory(initialDirectory);
     }
-    File file = chooser.showOpenDialog(codeArea.getScene().getWindow());
-    log.info("准备打开的文件: {}", file);
+
+    File file = fileChooser.showOpenDialog(stage);
     if (file != null) {
-      // 保存当前路径
-      prefs.put("lastOpenPath", file.getParent());
-      loadFile(file);
-      updateFileTooltip();
-      log.info("事件结束-打开");
-    } else {
-      log.info("事件结束-打开-取消");
+      try {
+        String content = Files.readString(file.toPath(), StandardCharsets.UTF_8);
+        codeArea.setText(content);
+        currentFile = file;
+        markUnmodified();
+        statusLabel = currentFile.getName();
+        fileTooltip = currentFile.getAbsolutePath();
+        fileLabel.setText(statusLabel);
+        tooltip.setText(fileTooltip);
+        // 保存当前目录到首选项
+        prefs.put("lastUsedOpenDirectory", file.getParent());
+      } catch (IOException e) {
+        showAlert(AlertType.ERROR, "打开文件失败: " + e.getMessage());
+      }
     }
   }
 
-  private void updateFileTooltip() {
+  private boolean saveFile() {
     if (currentFile == null) {
-      fileTooltip = "未命名文件";
+      return saveFileAs();
     } else {
-      fileTooltip = currentFile.getAbsolutePath();
+      try {
+        Files.writeString(currentFile.toPath(), codeArea.getText(), StandardCharsets.UTF_8);
+        markUnmodified();
+        statusLabel = currentFile.getName();
+        fileLabel.setText(statusLabel);
+        return true;
+      } catch (IOException e) {
+        showAlert(AlertType.ERROR, "保存文件失败: " + e.getMessage());
+        return false;
+      }
     }
-    tooltip.setText(fileTooltip);
   }
 
-  private void loadFile(File file) {
-    try {
-      log.info("准备读取文件: {}", file);
-      String content = Files.readString(file.toPath());
-      codeArea.setText(replaceTabs(content)); // 强制转换制表符
-      currentFile = file;
-      isModified.set(false);
-      log.info("文件读取完成: {}", file);
-    } catch (IOException e) {
-      log.error("文件读取失败", e);
-      showAlert(AlertType.ERROR, "无法读取文件: " + e.getMessage());
+  private boolean saveFileAs() {
+    FileChooser fileChooser = new FileChooser();
+    fileChooser.setTitle("另存为");
+    fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("star 文件", "*.star"));
+    fileChooser.setInitialFileName(currentFile != null ? currentFile.getName() : "未命名文件.star");
+    // 从首选项加载上次保存的目录
+    Preferences prefs = Preferences.userNodeForPackage(CompilerController.class);
+    String lastUsedDirectory = prefs.get("lastUsedSaveAsDirectory", System.getProperty("user.home"));
+    File initialDirectory = new File(lastUsedDirectory);
+    if (initialDirectory.exists() && initialDirectory.isDirectory()) {
+      fileChooser.setInitialDirectory(initialDirectory);
     }
+
+    File file = fileChooser.showSaveDialog(stage);
+    if (file != null) {
+      try {
+        Files.writeString(file.toPath(), codeArea.getText(), StandardCharsets.UTF_8);
+        currentFile = file;
+        markUnmodified();
+        statusLabel = currentFile.getName();
+        fileTooltip = currentFile.getAbsolutePath();
+        fileLabel.setText(statusLabel);
+        tooltip.setText(fileTooltip);
+        // 保存当前目录到首选项
+        prefs.put("lastUsedSaveAsDirectory", file.getParent());
+        return true;
+      } catch (IOException e) {
+        showAlert(AlertType.ERROR, "保存文件失败: " + e.getMessage());
+        return false;
+      }
+    }
+    return false;
   }
 
   @FXML
@@ -672,47 +718,109 @@ public class CompilerController {
 
   @FXML
   private void handleSaveAs(ActionEvent event) {
-    saveAs();
-    updateFileTooltip();
-  }
-
-  private boolean saveAs() {
-    log.info("事件开始-另存为");
-    Preferences prefs = Preferences.userNodeForPackage(CompilerController.class);
-    String lastPath = prefs.get("lastOpenPath", null);
-    FileChooser chooser = new FileChooser();
-    if (lastPath != null) {
-      log.info("上次保存路径: {}", lastPath);
-      chooser.setInitialDirectory(new File(lastPath));
-    }
-    chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Star Files", "*.star"));
-    File file = chooser.showSaveDialog(codeArea.getScene().getWindow());
-    log.info("准备保存的文件: {}", file);
-    if (file != null) {
-      prefs.put("lastOpenPath", file.getParent());
-      if (!file.getName().endsWith(".star")) {
-        file = new File(file.getAbsolutePath() + ".star");
-      }
-      currentFile = file;
-      return saveFile();
-    }
-    log.info("事件结束-另存为-取消");
-    return false;
+    saveFileAs();
   }
 
   @FXML
   private void handleClose(ActionEvent event) {
     if (confirmSave()) {
-      log.info("事件开始-关闭");
-      codeArea.clear();
-      currentFile = null;
-      isModified.set(false);
-      updateFileTooltip();
-      log.info("事件结束-关闭");
+      Platform.exit();
+      System.exit(0);
     }
   }
 
   private void markModified() {
-    isModified.set(true);
+    if (!isModified.get()) {
+      isModified.set(true);
+    }
+  }
+
+  private void markUnmodified() {
+    if (isModified.get()) {
+      isModified.set(false);
+    }
+  }
+
+  @FXML
+  private void handleExportSyntaxTree(ActionEvent event) {
+    if (currentFile == null || isModified.getValue()) {
+      showAlert(AlertType.WARNING, "请先保存当前内容，再进行词法分析和语法分析。");
+      return;
+    }
+    if (Parser.treeRoot == null) {
+      showAlert(AlertType.WARNING, "请先进行语法分析再导出");
+      return;
+    }
+
+    FileChooser fileChooser = new FileChooser();
+    fileChooser.setTitle("导出语法树");
+
+    // 设置默认文件名
+    fileChooser.setInitialFileName("ParserTree.txt");
+
+    // 新增路径记忆功能
+    Preferences prefs = Preferences.userNodeForPackage(CompilerController.class);
+    String lastUsedExportDirectory = prefs.get("lastUsedExportDirectory", System.getProperty("user.home"));
+    File initialDirectory = new File(lastUsedExportDirectory);
+    if (initialDirectory.exists() && initialDirectory.isDirectory()) {
+      fileChooser.setInitialDirectory(initialDirectory);
+    }
+
+    fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("文本文件", "*.txt"));
+    File file = fileChooser.showSaveDialog(stage);
+
+    if (file != null) {
+      try (FileWriter writer = new FileWriter(file)) {
+        // 保存当前目录到首选项
+        prefs.put("lastUsedExportDirectory", file.getParent());
+
+        String treeText = buildTreeText(Parser.treeRoot, "", true);
+        writer.write(treeText);
+        showAlert(AlertType.INFORMATION, "语法树已成功导出至：" + file.getAbsolutePath());
+      } catch (IOException e) {
+        log.error("导出失败", e);
+        showAlert(AlertType.ERROR, "导出失败：" + e.getMessage());
+      }
+    }
+  }
+
+  private String buildTreeText(TokenTreeView node, String indent, boolean isLast) {
+    StringBuilder sb = new StringBuilder();
+    sb.append(indent);
+
+    if (isLast) {
+      sb.append("└─ ");
+      indent += "   ";
+    } else {
+      sb.append("├─ ");
+      indent += "│  ";
+    }
+
+    sb.append(node.getDisplayText()).append("\n");
+
+    List<TokenTreeView> children = node.getChildren();
+    for (int i = 0; i < children.size(); i++) {
+      sb.append(buildTreeText(children.get(i), indent, i == children.size() - 1));
+    }
+
+    return sb.toString();
+  }
+
+  public void handleGenerateAssembly(ActionEvent event) {
+    if (semanticAnalyzer == null || semanticAnalyzer.middleTableList.isEmpty() || semanticAnalyzer.hasError) {
+      showAlert(AlertType.WARNING, "请先进行并通过语义分析。");
+      return;
+    }
+
+    mainTabPane.getSelectionModel().select(4);
+
+    String assemblyCode = new AssemblyGenerator(semanticAnalyzer.constTable, semanticAnalyzer.variableTable, semanticAnalyzer.middleTableList).generateAssembly();
+    resArea.setText(assemblyCode);
+    // 粘贴到粘贴板
+    Clipboard clipboard = Clipboard.getSystemClipboard();
+    ClipboardContent content = new ClipboardContent();
+    content.putString(assemblyCode);
+    clipboard.setContent(content);
+    // showAlert(AlertType.INFORMATION, "汇编代码已复制到粘贴板。");
   }
 }
