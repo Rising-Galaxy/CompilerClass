@@ -8,6 +8,7 @@ import cn.study.compilerclass.model.VariableTableEntry;
 import cn.study.compilerclass.parser.TokenTreeView;
 import cn.study.compilerclass.utils.OutInfo;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -30,7 +31,7 @@ public class SemanticAnalyzer {
   private final String src = "语义分析";
   private final List<String> errors;
   private final List<String> warnings;
-  public boolean hasError;
+  private boolean hasError;
 
   public final ArrayList<VariableTableEntry> variableTable; // 变量表
   public final ArrayList<ConstTableEntry> constTable;     // 常量表
@@ -40,6 +41,8 @@ public class SemanticAnalyzer {
   private final Stack<Integer> scopeStack;            // 作用域栈
   // 用于跟踪变量使用情况
   private final Set<VariableTableEntry> usedVariables;
+  // 用于跟踪常量使用情况
+  private final Set<ConstTableEntry> usedConstants;
   private final Set<String> declaredVariablesInScope; // 用于在当前作用域内快速检查重复声明
   private int nextScopeId;                            // 下一个作用域的ID
   private boolean mainFunctionFound;                  // 是否找到主函数
@@ -69,10 +72,15 @@ public class SemanticAnalyzer {
     this.delayedTasks = new ArrayList<>();
     this.scopeStack = new Stack<>();
     this.usedVariables = new HashSet<>();
+    this.usedConstants = new HashSet<>();
     this.declaredVariablesInScope = new HashSet<>(); // 初始化
     this.nextScopeId = 0; // 初始化，全局作用域为0
     this.mainFunctionFound = false;
     this.hasError = false;
+  }
+
+  public boolean hasError() {
+    return hasError;
   }
 
   /**
@@ -97,6 +105,7 @@ public class SemanticAnalyzer {
     usedVariables.clear();
     nextScopeId = 1; // 全局作用域为0，子作用域从1开始
     mainFunctionFound = false;
+    addBuiltInFunctions(); // 添加内置函数
 
     scopeStack.push(0); // 进入全局作用域
 
@@ -107,6 +116,9 @@ public class SemanticAnalyzer {
       if (!mainFunctionFound) {
         error("程序中没有主函数");
       }
+
+      // 检查未使用的变量和常量
+      checkUnusedVariables();
 
       // 输出分析结果
       if (errors.isEmpty() && warnings.isEmpty()) {
@@ -122,10 +134,39 @@ public class SemanticAnalyzer {
           info("语义分析完成，发现 " + warnings.size() + " 个警告");
         }
       }
+
+      // 如果有错误，不展示四元式
+      if (hasError) {
+        middleTableList.clear();
+        error("由于语义分析存在错误，四元式表不展示");
+      }
     } catch (Exception e) {
       error("语义分析过程中出现异常", e);
     } finally {
       scopeStack.pop(); // 退出全局作用域
+    }
+  }
+
+  // 添加内置函数
+  private void addBuiltInFunctions() {
+    // 添加内置函数定义
+    functionTable.add(new FunctionTableEntry("input", "int", new ArrayList<>()));
+    functionTable.add(new FunctionTableEntry("put", "void", new ArrayList<>(Collections.singleton("int"))));
+    functionTable.add(new FunctionTableEntry("putc", "void", new ArrayList<>(Collections.singleton("char"))));
+    functionTable.add(new FunctionTableEntry("putb", "void", new ArrayList<>(Collections.singleton("bool"))));
+  }
+
+  // 检查是否存在未使用的变量/常量
+  public void checkUnusedVariables() {
+    for (VariableTableEntry var : variableTable) {
+      if (!usedVariables.contains(var)) {
+        warn(String.format("[r: %d, c: %d]-变量 '%s' 从未被使用", var.getInitRow(), var.getInitCol(), var.getName()));
+      }
+    }
+    for (ConstTableEntry constEntry : constTable) {
+      if (!usedConstants.contains(constEntry)) {
+        warn(String.format("[r: %d, c: %d]-常量 '%s' 从未被使用", constEntry.getInitRow(), constEntry.getInitCol(), constEntry.getName()));
+      }
     }
   }
 
@@ -177,18 +218,22 @@ public class SemanticAnalyzer {
         }
       }
 
-      String value = "未初始化";
+      String value = "null";
       if (isConst || varNode.getDescription().equals("init")) {
         TokenTreeView valueNode = varNode.getChildren().getLast();
         if (isValueNode(valueNode)) {
-          value = valueNode.getValue(); // 直接取值
-          emit("=", value, "", name);
+          // 如果是值节点，直接取值
+          value = valueNode.getValue();
         } else if (isExpressionNode(valueNode)) {
-          value = "表达式";
+          // 如果是常量，报错
+          if (isConst) {
+            error(String.format("[r: %d, c: %d]-常量 '%s' 定义不允许为表达式", valueNode.getRow(), valueNode.getCol(), name));
+            continue; // 跳过当前常量定义
+          }
           // 分析表达式并获取类型
           Result result = analyzeExpression(valueNode);
           if (!result.getType().equals(commonType)) {
-            error(String.format("[r: %d, c: %d]-%s初始化表达式类型不匹配：期望 '%s'，实际为 '%s'", valueNode.getRow(), valueNode.getCol(), isConst ? SymbolType.CONST : SymbolType.VAR, commonType, result.getType()));
+            error(String.format("[r: %d, c: %d]-变量初始化表达式类型不匹配：期望 '%s'，实际为 '%s'", valueNode.getRow(), valueNode.getCol(), commonType, result.getType()));
           } else {
             // 生成中间代码
             emit("=", result.getValue(), "", name);
@@ -197,9 +242,9 @@ public class SemanticAnalyzer {
       }
 
       if (isConst) {
-        constTable.add(new ConstTableEntry(name, commonType, value, getCurrentScopePath()));
+        constTable.add(new ConstTableEntry(name, commonType, value, varNode.getCol(), varNode.getRow()));
       } else {
-        variableTable.add(new VariableTableEntry(name, commonType, getCurrentScopePath(), value));
+        variableTable.add(new VariableTableEntry(name, commonType, getCurrentScopePath(), value, varNode.getCol(), varNode.getRow()));
       }
     }
   }
@@ -244,7 +289,6 @@ public class SemanticAnalyzer {
 
   // 分析条件语句
   private void analyzeIfStatement(TokenTreeView node) {
-    info(String.format("分析条件语句: [r: %d, c: %d]", node.getRow(), node.getCol()));
     ArrayList<TokenTreeView> children = node.getChildren();
     int finalOut = 0;
     for (int i = 0; i < children.size(); i++) {
@@ -253,9 +297,9 @@ public class SemanticAnalyzer {
       if (condition.getFirst().getValue().equals("else")) {
         TokenTreeView conditionBody = condition.getLast();
         if (conditionBody.getNodeType() == NodeType.BLOCK) {
-          ArrayList<TokenTreeView> body = conditionBody.getChildren();
-          for (int j = 1; j < body.size(); j++) {
-            analyzeStatement(body.get(j));
+          ArrayList<TokenTreeView> bodys = conditionBody.getChildren();
+          for (TokenTreeView body : bodys) {
+            analyzeStatement(body);
           }
         } else {
           analyzeStatement(conditionBody);
@@ -293,7 +337,6 @@ public class SemanticAnalyzer {
     // 回填全部的最终出口
     backPatch(finalOut, midId);
     processDelayedTasks();
-    info("分析条件语句结束");
   }
 
   // 分析函数调用
@@ -302,31 +345,31 @@ public class SemanticAnalyzer {
     String functionName = children.getFirst().getValue();
     FunctionTableEntry functionEntry = findFunction(functionName);
     if (functionEntry == null) {
-      if (functionName.equals("read")) {
-        if (!children.getLast().getChildren().isEmpty()) {
-          error(String.format("[r: %d, c: %d]-函数 '%s' 调用参数过多", functionCallNode.getRow(), functionCallNode.getCol(), functionName));
-          return errorResult;
-        }
-        String midVar = newTmp();
-        emit("call", "read", "", midVar);
-        processDelayedTasks();
-        return new Result(midVar, "int");
-      } else if (functionName.equals("write")) {
-        if (children.getLast().getChildren().isEmpty()) {
-          error(String.format("[r: %d, c: %d]-函数 '%s' 调用缺少参数", functionCallNode.getRow(), functionCallNode.getCol(), functionName));
-          return errorResult;
-        } else if (children.getLast().getChildren().size() > 1) {
-          error(String.format("[r: %d, c: %d]-函数 '%s' 调用参数过多", functionCallNode.getRow(), functionCallNode.getCol(), functionName));
-          return errorResult;
-        }
-        TokenTreeView paramNode = children.getLast().getChildren().getFirst();
-        Result result = analyzeExpression(paramNode);
-        emit("para", result.getValue(), "", "");
-        String midVar = newTmp();
-        emit("call", "write", "", midVar);
-        processDelayedTasks();
-        return new Result(midVar, "void");
-      }
+      // if (functionName.equals("input")) {
+      //   if (!children.getLast().getChildren().isEmpty()) {
+      //     error(String.format("[r: %d, c: %d]-函数 '%s' 调用参数过多", functionCallNode.getRow(), functionCallNode.getCol(), functionName));
+      //     return errorResult;
+      //   }
+      //   String midVar = newTmp();
+      //   emit("call", "input", "", midVar);
+      //   processDelayedTasks();
+      //   return new Result(midVar, "int");
+      // } else if (functionName.equals("output")) {
+      //   if (children.getLast().getChildren().isEmpty()) {
+      //     error(String.format("[r: %d, c: %d]-函数 '%s' 调用缺少参数", functionCallNode.getRow(), functionCallNode.getCol(), functionName));
+      //     return errorResult;
+      //   } else if (children.getLast().getChildren().size() > 1) {
+      //     error(String.format("[r: %d, c: %d]-函数 '%s' 调用参数过多", functionCallNode.getRow(), functionCallNode.getCol(), functionName));
+      //     return errorResult;
+      //   }
+      //   TokenTreeView paramNode = children.getLast().getChildren().getFirst();
+      //   Result result = analyzeExpression(paramNode);
+      //   emit("para", result.getValue(), "", "");
+      //   String midVar = newTmp();
+      //   emit("call", "output", "", midVar);
+      //   processDelayedTasks();
+      //   return new Result(midVar, "void");
+      // }
       error(String.format("[r: %d, c: %d]-函数 '%s' 未定义", functionCallNode.getRow(), functionCallNode.getCol(), functionName));
       return errorResult;
     }
@@ -338,7 +381,7 @@ public class SemanticAnalyzer {
     }
     // 检查参数类型
     for (int i = 0; i < paramNodes.size(); i++) {
-      TokenTreeView paramNode = paramNodes.get(i);
+      TokenTreeView paramNode = paramNodes.get(i).getChildren().getFirst();
       Result param = analyzeExpression(paramNode);
       String expectedType = functionEntry.getParamTypes().get(i);
       if (!param.getType().equals(expectedType)) {
@@ -373,7 +416,7 @@ public class SemanticAnalyzer {
     String currentScopePath = getCurrentScopePath(); // 获取当前作用域用于查找
 
     // 检查左侧是否为常量
-    ConstTableEntry constEntry = findConst(variableName, currentScopePath);
+    ConstTableEntry constEntry = findConst(variableName);
     if (constEntry != null) {
       error(String.format("[r: %d, c: %d]-不能给常量 '%s' 赋值", rightOperandNode.getRow(), rightOperandNode.getCol(), variableName));
       return; // 常量不能被赋值
@@ -386,7 +429,7 @@ public class SemanticAnalyzer {
       return;
     }
 
-    // 标记变量为已使用
+    // 标记变量/常量为已使用
     usedVariables.add(varEntry);
 
     // 分析右侧表达式并进行类型检查
@@ -412,7 +455,7 @@ public class SemanticAnalyzer {
       case FUNCTION_CALL -> analyzeFunctionCall(expressionNode);
       case LITERAL_INT -> new Result(expressionNode.getValue(), "int");
       case LITERAL_FLOAT -> new Result(expressionNode.getValue(), "float");
-      case LITERAL_CHAR -> new Result(String.format("'%s'", expressionNode.getValue()), "char");
+      case LITERAL_CHAR -> new Result(expressionNode.getValue(), "char");
       case LITERAL_BOOL -> new Result(expressionNode.getValue(), "bool");
       case IDENTIFIER, PARAM -> {
         String identifierName = expressionNode.getValue();
@@ -426,7 +469,7 @@ public class SemanticAnalyzer {
           error(String.format("[r: %d, c: %d]-非法调用函数 '%s'", row, col, identifierName));
           yield errorResult;
         } else if (symbolType == SymbolType.CONST) {
-          ConstTableEntry constEntry = findConst(identifierName, getCurrentScopePath());
+          ConstTableEntry constEntry = findConst(identifierName);
           if (constEntry != null) {
             yield new Result(constEntry.getName(), constEntry.getType());
           }
@@ -436,6 +479,11 @@ public class SemanticAnalyzer {
           if (varEntry != null) {
             usedVariables.add(varEntry);
             yield new Result(varEntry.getName(), varEntry.getType());
+          }
+          ConstTableEntry constEntry = findConst(identifierName);
+          if (constEntry != null) {
+            usedConstants.add(constEntry);
+            yield new Result(constEntry.getName(), constEntry.getType());
           }
           yield errorResult;
         }
@@ -596,9 +644,10 @@ public class SemanticAnalyzer {
         return errorResult;
       } else {
         // 生成中间代码
-        if (unaryNode.getValue().equals("-")) {
-          emit("-", "0", operandType.getValue(), newTmp());
-          operandType.setValue(newTmp());
+        if (unaryNode.getChildren().getFirst().getValue().equals("-")) {
+          String tmp = newTmp();
+          emit("-", "0", operandType.getValue(), tmp);
+          operandType.setValue(tmp);
         }
       }
       processDelayedTasks();
@@ -673,14 +722,14 @@ public class SemanticAnalyzer {
 
   // 检查标识符是否已经在对应符号表中声明
   private SymbolType checkSymbolType(String name, String scopePath) {
-    if (findVariable(name, scopePath) != null) {
-      return SymbolType.VAR;
-    }
-    if (findConst(name, scopePath) != null) {
+    if (findConst(name) != null) {
       return SymbolType.CONST;
     }
     if (findFunction(name) != null) {
       return SymbolType.FUNCTION;
+    }
+    if (findVariable(name, scopePath) != null) {
+      return SymbolType.VAR;
     }
     return SymbolType.NONE;
   }
@@ -742,23 +791,12 @@ public class SemanticAnalyzer {
     return null; // 未找到
   }
 
-  // 辅助方法：查找常量 (考虑作用域)
-  private ConstTableEntry findConst(String name, String currentScopePath) {
+  // 辅助方法：查找常量
+  private ConstTableEntry findConst(String name) {
     // 从当前作用域向上查找
-    while (currentScopePath != null) {
-      for (ConstTableEntry entry : constTable) {
-        if (entry.getName().equals(name) && entry.getScope().equals(currentScopePath)) {
-          return entry;
-        }
-      }
-      // 向上一级作用域查找
-      currentScopePath = getScopeParentPath(currentScopePath);
-    }
-    if (scopeStack.size() > 1) { // 检查全局
-      for (ConstTableEntry entry : constTable) {
-        if (entry.getName().equals(name) && entry.getScope().equals("0/")) {
-          return entry;
-        }
+    for (ConstTableEntry entry : constTable) {
+      if (entry.getName().equals(name)) {
+        return entry;
       }
     }
     return null; // 未找到

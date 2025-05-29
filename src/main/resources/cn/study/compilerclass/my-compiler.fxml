@@ -51,7 +51,7 @@
             <MenuItem mnemonicParsing="false" onAction="#handleLexicalAnalysis" text="词法分析" />
             <MenuItem mnemonicParsing="false" onAction="#handleSyntaxAnalysis" text="语法分析" />
             <MenuItem mnemonicParsing="false" onAction="#handleSemanticAnalysis" text="语义分析及四元式生成" />
-            <MenuItem mnemonicParsing="false" onAction="#handleGenerateAssembly" text="汇编代码生成" />
+            <MenuItem fx:id="generateAssemblyMenuItem" mnemonicParsing="false" onAction="#handleGenerateAssembly" text="汇编代码生成" />
             <SeparatorMenuItem mnemonicParsing="false" />
             <MenuItem fx:id="exportSyntaxTreeItem" mnemonicParsing="false" onAction="#handleExportSyntaxTree" text="导出语法树..." />
           </items>
@@ -130,7 +130,6 @@
                               <columns>
                                 <TableColumn fx:id="constNameColumn" maxWidth="1.7976931348623157E308" minWidth="100.0" prefWidth="-1.0" text="常量名" />
                                 <TableColumn fx:id="constTypeColumn" maxWidth="1.7976931348623157E308" minWidth="100.0" prefWidth="100.0" text="类型" />
-                                <TableColumn fx:id="constScopeColumn" maxWidth="1.7976931348623157E308" minWidth="100.0" prefWidth="100.0" text="作用域" />
                                 <TableColumn fx:id="constValueColumn" maxWidth="1.7976931348623157E308" minWidth="100.0" prefWidth="100.0" text="值" />
                               </columns>
                               <columnResizePolicy>
