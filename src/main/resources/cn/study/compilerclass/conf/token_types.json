@@ -56,8 +56,7 @@
     "_IDENTIFIER_": 200,
     "_INTEGER_": 201,
     "_FLOAT_": 202,
-    "_STRING_": 203,
-    "_CHAR_": 204,
+    "_CHAR_": 203,
     "_ILLEGAL_": -1
   }
 }

@@ -19,19 +19,26 @@ import javafx.scene.control.TreeView;
 public class Parser {
 
   private static final Token END_OF_TOKEN = new Token("", -1, 0, 0);
-  public static TokenTreeView treeRoot;
+  public TokenTreeView treeRoot;
   private final TokenManager tokenManager;
   private final String src = "语法分析";
   private final OutInfo outInfos;
   private ErrorProcess errorProcess = ErrorProcess.SKIP;
   private List<Token> tokens;
   private int currentPos;
+  private boolean hasError;
 
   public Parser(String filePath, OutInfo outInfos) {
+    this.treeRoot = null;
     this.tokenManager = new TokenManager();
     this.outInfos = outInfos;
     this.currentPos = 0;
+    this.hasError = false;
     readTokens(filePath);
+  }
+
+  public boolean hasError() {
+    return hasError;
   }
 
   private void readTokens(String filePath) {
@@ -59,6 +66,7 @@ public class Parser {
   }
 
   private void error(String msg, boolean advance) {
+    hasError = true;
     outInfos.error(src, msg);
     if (errorProcess != ErrorProcess.SKIP) {
       throw new RuntimeException(msg);
@@ -76,6 +84,7 @@ public class Parser {
   }
 
   private void error(String msg, Exception e) {
+    hasError = true;
     outInfos.error(src, msg, e);
     if (errorProcess != ErrorProcess.SKIP) {
       throw new RuntimeException(msg);
@@ -119,7 +128,13 @@ public class Parser {
     try {
       // 更改入口点为完整程序解析
       treeRoot = program();
-      info("语法分析完成");
+
+      // 总结错误
+      if (hasError) {
+        error("语法分析过程中出现错误，请检查输出日志");
+      } else {
+        info("语法分析完成，没有发现错误");
+      }
     } catch (Exception e) {
       errorProcess = ErrorProcess.SKIP;
       error("分析过程中出现异常", e);
@@ -447,7 +462,7 @@ public class Parser {
       // 条件表达式
       TokenTreeView condition = expression();
       condition.setParent(node);
-      condition.setNodeInfo(NodeType.EXPRESSION, "条件表达式");
+      condition.setDescription("条件表达式");
       node.addChild(condition);
 
       // 右括号
@@ -650,6 +665,24 @@ public class Parser {
   }
 
   /**
+   * 判断 {@code token} 是否为类型 类型包括：{@code int}、{@code float}、{@code bool}、{@code void}
+   *
+   * @param token token对象
+   * @return 是否为类型
+   */
+  private boolean isType(Token token) {
+    String value = token.getValue();
+    return value.equals("int") || value.equals("float") || value.equals("bool") || value.equals("void");
+  }
+
+  private Token currentToken() {
+    if (currentPos >= tokens.size()) {
+      return END_OF_TOKEN;
+    }
+    return tokens.get(currentPos);
+  }
+
+  /**
    * 常量定义解析</br> 文法：</br> {@code ConstDeclaration} -> "const" {@link Parser#isType(Token) Type}
    * {@link Parser#singleConstDefinition(TokenTreeView) SingleConstDefinition}
    * (","{@link Parser#singleConstDefinition(TokenTreeView) SingleConstDefinition})* ";"
@@ -809,6 +842,10 @@ public class Parser {
     return node;
   }
 
+  /*===============================
+           表达式
+   *===============================*/
+
   /**
    * 单个变量定义解析</br> 文法：</br> {@code SingleVariableDefinition} -> {@link Parser#isIdentifier(Token) Identifier} |
    * {@link Parser#isIdentifier(Token) Identifier} "=" {@link Parser#expression() Expression}
@@ -875,10 +912,6 @@ public class Parser {
     }
     varNode.addChild(exprNode);
   }
-
-  /*===============================
-           表达式
-   *===============================*/
 
   // 完整表达式层次结构
   private TokenTreeView expression() {
@@ -1127,30 +1160,26 @@ public class Parser {
 
           consume(); // 消费左括号
 
-          // 如果不是右括号，说明有参数
-          if (currentToken().getType() != tokenManager.getType(")")) {
-            // 处理参数列表
-            TokenTreeView argsNode = new TokenTreeView(root, "函数参数", NodeType.PARAM_LIST, "参数列表", currentToken().getLine(), currentToken().getColumn());
-            root.addChild(argsNode);
-
-            // 解析第一个参数
-            TokenTreeView argNode = expression();
-            argNode.setParent(argsNode);
-            argsNode.addChild(argNode);
-            argNode.setNodeType(NodeType.PARAM);
-
-            // 解析剩余参数
-            while (currentToken().getType() == tokenManager.getType(",")) {
+          // 处理参数列表
+          TokenTreeView argsNode = new TokenTreeView(root, "函数参数", NodeType.PARAM_LIST, "参数列表", currentToken().getLine(), currentToken().getColumn());
+          int id = 1; // 参数编号
+          while (!isEOF() && currentToken().getType() != tokenManager.getType(")")) {
+            if (currentToken().getType() == tokenManager.getType(",")) {
               consume(); // 消费逗号
-
-              // 解析下一个参数
-              argNode = expression();
-              argNode.setParent(argsNode);
-              argsNode.addChild(argNode);
-              argNode.setNodeType(NodeType.PARAM);
+              if (isEOF() || currentToken().getType() == tokenManager.getType(")")) {
+                error(String.format("[r: %d, c: %d]-函数调用参数列表中缺少参数", currentToken().getLine(), currentToken().getColumn()));
+                break; // 如果逗号后没有参数，直接跳出循环
+              }
             }
+            TokenTreeView argNode = new TokenTreeView(argsNode, "参数" + id++, NodeType.PARAM, currentToken().getLine(), currentToken().getColumn());
+            argsNode.addChild(argNode);
+            TokenTreeView exprNode = expression();
+            exprNode.setParent(argNode);
+            argNode.addChild(exprNode);
           }
-
+          if (!argsNode.getChildren().isEmpty()) {
+            root.addChild(argsNode);
+          }
           if (currentToken().getType() != tokenManager.getType(")")) {
             error(String.format("[r: %d, c: %d]-函数调用缺少')'", currentToken().getLine(), currentToken().getColumn()));
             TokenTreeView errorNode = new TokenTreeView(root, "缺少)", NodeType.ERROR, "括号不匹配", currentToken().getLine(), currentToken().getColumn());
@@ -1203,11 +1232,9 @@ public class Parser {
   }
 
   private boolean isConst(Token token) {
-    return token.getType() == tokenManager.getType("_INTEGER_") || token.getType() == tokenManager.getType("_FLOAT_") || token.getValue()
-                                                                                                                              .equals("true") || token.getValue()
-                                                                                                                                                      .equals("false") || token.getValue()
-                                                                                                                                                                               .equals("True") || token.getValue()
-                                                                                                                                                                                                       .equals("False");
+    return token.getType() == tokenManager.getType("_INTEGER_") || token.getType() == tokenManager.getType("_FLOAT_") || token.getType() == tokenManager.getType("_CHAR_") || token.getValue()
+                                                                                                                                                                                   .equals("True") || token.getValue()
+                                                                                                                                                                                                           .equals("False");
   }
 
   /**
@@ -1261,17 +1288,6 @@ public class Parser {
     return DeclarationType.VARIABLE;
   }
 
-  /**
-   * 判断 {@code token} 是否为类型 类型包括：{@code int}、{@code float}、{@code bool}、{@code void}
-   *
-   * @param token token对象
-   * @return 是否为类型
-   */
-  private boolean isType(Token token) {
-    String value = token.getValue();
-    return value.equals("int") || value.equals("float") || value.equals("bool") || value.equals("void");
-  }
-
   // 判断是否为main函数
   private boolean isMainFunction() {
     // 首先检查是否有足够的token
@@ -1282,13 +1298,6 @@ public class Parser {
     // main函数的模式：void main ( )
     return currentToken().getValue().equals("void") && lookahead(1).getValue()
                                                                    .equals("main") && lookahead(2).getType() == tokenManager.getType("(");
-  }
-
-  private Token currentToken() {
-    if (currentPos >= tokens.size()) {
-      return END_OF_TOKEN;
-    }
-    return tokens.get(currentPos);
   }
 
   /**
@@ -1403,10 +1412,20 @@ public class Parser {
   private TokenTreeView parameterList(boolean isDefinition) {
     TokenTreeView node = new TokenTreeView("参数列表", NodeType.PARAM_LIST, currentToken().getLine(), currentToken().getColumn());
     while (!isEOF() && !currentToken().getValue().equals(")")) {
-      node.addChild(parameter(isDefinition));
       if (currentToken().getType() == tokenManager.getType(",")) {
         consume(); // 跳过逗号
+        if (isEOF() || currentToken().getType() == tokenManager.getType(")")) {
+          error(String.format("[r: %d, c: %d]-参数列表中逗号后缺少参数", currentToken().getLine(), currentToken().getColumn()));
+          node.addChild(new TokenTreeView("逗号后缺少参数", NodeType.ERROR, "参数列表错误", currentToken().getLine(), currentToken().getColumn()));
+          break; // 如果逗号后没有参数，直接跳出循环
+        }
       }
+      node.addChild(parameter(isDefinition));
+    }
+    if (currentToken().getType() != tokenManager.getType(")")) {
+      error(String.format("[r: %d, c: %d]-参数列表缺少')'", currentToken().getLine(), currentToken().getColumn()));
+    } else {
+      consume(); // 跳过右括号
     }
     return node;
   }

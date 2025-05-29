@@ -61,8 +61,6 @@ public class Lexer {
           token = scanIdentifier();
         } else if (Character.isDigit(currentChar)) {
           token = scanNumber();
-        } else if (currentChar == '"') {
-          token = scanString();
         } else if (currentChar == '\'') {
           token = scanChar();
         } else if (currentChar == '/') {
@@ -408,49 +406,6 @@ public class Lexer {
     return Token.builder().value(value).type(type).line(currentLine).column(startColumn).build();
   }
 
-  private Token scanString() {
-    StringBuilder sb = new StringBuilder();
-    int startColumn = currentColumn;
-    moveNext(); // 跳过开始的引号
-
-    while (currentChar != '"' && currentChar != '\0' && currentChar != '\n' && currentChar != '\r') {
-      if (currentChar == '\\') {
-        moveNext();
-        switch (currentChar) {
-          case 'n' -> sb.append('\n');
-          case 't' -> sb.append('\t');
-          case 'r' -> sb.append('\r');
-          case '\\' -> sb.append('\\');
-          case '"' -> sb.append('"');
-          case '\'' -> {
-            sb.append('\'');
-            warn(String.format("不必要的转义字符'%c'-[r: %d, c: %d]", currentChar, currentLine, currentColumn));
-          }
-          case '0' -> sb.append('\0');
-          default -> {
-            error(String.format("非法的转义字符'%c'-[r: %d, c: %d]", currentChar, currentLine, currentColumn));
-            sb.append(currentChar);
-          }
-        }
-      } else {
-        sb.append(currentChar);
-      }
-      moveNext();
-    }
-
-    if (currentChar == '\0' || currentChar == '\n' || currentChar == '\r') {
-      error(String.format("未闭合的字符串-[r: %d, c: %d]", currentLine, startColumn));
-    }
-
-    moveNext(); // 跳过结束的引号
-    return Token.builder()
-                .value(sb.toString())
-                .type(tokenManager.getType("_STRING_"))
-                .line(currentLine)
-                .column(startColumn)
-                .build();
-  }
-
   private void warn(String msg) {
     outInfos.warn(src, msg);
     if (errorProcess == ErrorProcess.WARN) {
@@ -462,30 +417,21 @@ public class Lexer {
     int startColumn = currentColumn;
     moveNext(); // 跳过开始的单引号
 
-    char value;
+    StringBuilder sb = new StringBuilder("'");
     if (currentChar == '\\') {
       moveNext();
-      switch (currentChar) {
-        case 'n' -> value = '\n';
-        case 't' -> value = '\t';
-        case 'r' -> value = '\r';
-        case '\\' -> value = '\\';
-        case '\'' -> value = '\'';
-        case '0' -> value = '\0';
-        case '"' -> {
-          value = '"';
-          warn(String.format("不必要的转义字符'%c'-[r: %d, c: %d]", currentChar, currentLine, currentColumn));
-        }
-        default -> {
-          error(String.format("非法的转义字符'%c'-[r: %d, c: %d]", currentChar, currentLine, currentColumn));
-          value = currentChar;
-        }
+      if (currentChar == '"') {
+        warn(String.format("不必要的转义字符'%c'-[r: %d, c: %d]", currentChar, currentLine, currentColumn));
+      } else if (!(currentChar == 'n' || currentChar == 't' || currentChar == 'r' || currentChar == '\\' || currentChar == '\'' || currentChar == '0')) {
+        // 处理非法转义字符
+        sb.append('\\');
+        error(String.format("非法的转义字符'%c'-[r: %d, c: %d]", currentChar, currentLine, currentColumn));
+      } else {
+        sb.append('\\');
       }
-      moveNext();
-    } else {
-      value = currentChar;
-      moveNext();
     }
+    sb.append(currentChar);
+    moveNext();
 
     if (currentChar != '\'') {
       error(String.format("字符常量必须是单个字符-[r: %d, c: %d]", currentLine, startColumn));
@@ -500,7 +446,7 @@ public class Lexer {
 
     moveNext(); // 跳过结束的引号
     return Token.builder()
-                .value(String.valueOf(value))
+                .value(sb.append("'").toString())
                 .type(tokenManager.getType("_CHAR_"))
                 .line(currentLine)
                 .column(startColumn)

@@ -51,6 +51,7 @@ import static cn.study.compilerclass.CompilerApp.stage;
 public class CompilerController {
 
   private SemanticAnalyzer semanticAnalyzer;
+  private Parser parser;
   private File currentFile;
   private SimpleBooleanProperty isModified = new SimpleBooleanProperty(false);
 
@@ -60,8 +61,6 @@ public class CompilerController {
   private TableColumn<ConstTableEntry, String> constNameColumn;
   @FXML
   private TableColumn<ConstTableEntry, String> constTypeColumn;
-  @FXML
-  private TableColumn<ConstTableEntry, String> constScopeColumn;
   @FXML
   private TableColumn<ConstTableEntry, String> constValueColumn;
   @FXML
@@ -110,6 +109,8 @@ public class CompilerController {
   private Menu editMenu;
   @FXML
   private Menu fileMenu;
+  @FXML
+  private MenuItem generateAssemblyMenuItem;
   @FXML
   private Label cursorPositionLabel;
   @FXML
@@ -179,6 +180,9 @@ public class CompilerController {
     tooltip = new Tooltip(fileTooltip);
     fileLabel.setTooltip(tooltip);
 
+    // 汇编代码快捷键
+    generateAssemblyMenuItem.setAccelerator(KeyCodeCombination.keyCombination("Ctrl+B"));
+
     stage.setOnCloseRequest(event -> {
       if (isModified.getValue()) {
         log.info("检测到文件修改，询问是否保存");
@@ -207,7 +211,6 @@ public class CompilerController {
   private void setupConstTable() {
     constNameColumn.setCellValueFactory(new PropertyValueFactory<>("name"));
     constTypeColumn.setCellValueFactory(new PropertyValueFactory<>("type"));
-    constScopeColumn.setCellValueFactory(new PropertyValueFactory<>("scope"));
     constValueColumn.setCellValueFactory(new PropertyValueFactory<>("value"));
   }
 
@@ -239,13 +242,14 @@ public class CompilerController {
       showAlert(AlertType.WARNING, "请先保存当前内容，再进行语法分析。");
       return;
     }
+    handleLexicalAnalysis(event); // 确保先进行词法分析
     // 确保样式类被应用
     resultTreeView.getStyleClass().add("result-tree");
     OutInfo outInfo = new OutInfo();
-    Parser parser = new Parser(currentFile.getParent() + File.separator + "lex_tokens.json", outInfo);
+    parser = new Parser(currentFile.getParent() + File.separator + "lex_tokens.json", outInfo);
     parser.parse();
     // treeRoot 应该在 parser.parse() 后被赋值
-    if (Parser.treeRoot != null) {
+    if (parser.treeRoot != null) {
       parser.getTreeView(resultTreeView);
     } else {
       log.warn("语法分析后 treeRoot 仍为 null");
@@ -268,7 +272,12 @@ public class CompilerController {
   @FXML
   private void handleSemanticAnalysis(ActionEvent event) {
     if (currentFile == null || isModified.getValue()) {
-      showAlert(AlertType.WARNING, "请先保存当前内容，再依次进行词法、语法、语义分析。");
+      showAlert(AlertType.WARNING, "请先保存当前内容，再执行语义分析");
+      return;
+    }
+    handleSyntaxAnalysis(event); // 确保先进行语法分析
+    if (parser == null || parser.hasError()) {
+      showAlert(AlertType.WARNING, "无法进行语义分析，请先确保语法分析无误");
       return;
     }
     OutInfo outInfo = new OutInfo();
@@ -276,35 +285,24 @@ public class CompilerController {
 
     // 切换到语义分析选项卡
     mainTabPane.getSelectionModel().select(2);
+    semanticAnalyzer.analyze(parser.treeRoot); // 使用 Parser.treeRoot
 
-    // 如果有语法树，则进行语义分析
-    if (Parser.treeRoot != null) { // 使用 Parser.treeRoot
-      semanticAnalyzer.analyze(Parser.treeRoot); // 使用 Parser.treeRoot
+    // 获取分析结果并转换为ObservableList
+    ObservableList<ConstTableEntry> constData = FXCollections.observableArrayList(semanticAnalyzer.getConstTableEntries());
+    setConstTableData(constData);
 
-      // 获取分析结果并转换为ObservableList
-      ObservableList<ConstTableEntry> constData = FXCollections.observableArrayList(semanticAnalyzer.getConstTableEntries());
-      setConstTableData(constData);
+    ObservableList<VariableTableEntry> variableData = FXCollections.observableArrayList(semanticAnalyzer.getVariableTableEntries());
+    setVariableTableData(variableData);
 
-      ObservableList<VariableTableEntry> variableData = FXCollections.observableArrayList(semanticAnalyzer.getVariableTableEntries());
-      setVariableTableData(variableData);
+    ObservableList<FunctionTableEntry> functionData = FXCollections.observableArrayList(semanticAnalyzer.getFunctionTableEntries());
+    setFunctionTableData(functionData);
 
-      ObservableList<FunctionTableEntry> functionData = FXCollections.observableArrayList(semanticAnalyzer.getFunctionTableEntries());
-      setFunctionTableData(functionData);
+    ObservableList<MiddleTableEntry> middleData = FXCollections.observableArrayList(semanticAnalyzer.getMiddleTableEntries());
+    setMiddleTableData(middleData);
 
-      ObservableList<MiddleTableEntry> middleData = FXCollections.observableArrayList(semanticAnalyzer.getMiddleTableEntries());
-      setMiddleTableData(middleData);
-
-      if (!outInfo.isEmpty()) {
-        outArea.setText(outInfo.toString());
-        outPane.setExpanded(true);
-      }
-    } else {
-      // 如果没有语法树，显示提示信息
-      Alert alert = new Alert(AlertType.WARNING);
-      alert.setTitle("警告");
-      alert.setHeaderText("无法进行语义分析");
-      alert.setContentText("请先进行词法分析和语法分析以生成语法树");
-      alert.showAndWait();
+    if (!outInfo.isEmpty()) {
+      outArea.setText(outInfo.toString());
+      outPane.setExpanded(true);
     }
   }
 
@@ -621,8 +619,9 @@ public class CompilerController {
       if (variableTable != null) {
         variableTable.getItems().clear();
       }
-      // if (functionTable != null) functionTable.getItems().clear();
-      Parser.treeRoot = null; // 清空静态语法树
+      if (functionTable != null) {
+        functionTable.getItems().clear();
+      }
     }
   }
 
@@ -743,12 +742,8 @@ public class CompilerController {
 
   @FXML
   private void handleExportSyntaxTree(ActionEvent event) {
-    if (currentFile == null || isModified.getValue()) {
-      showAlert(AlertType.WARNING, "请先保存当前内容，再进行词法分析和语法分析。");
-      return;
-    }
-    if (Parser.treeRoot == null) {
-      showAlert(AlertType.WARNING, "请先进行语法分析再导出");
+    if (currentFile == null || isModified.getValue() || parser == null || parser.treeRoot == null) {
+      showAlert(AlertType.WARNING, "请先保存当前内容，进行语法分析得到语法树后再尝试导出。");
       return;
     }
 
@@ -774,7 +769,7 @@ public class CompilerController {
         // 保存当前目录到首选项
         prefs.put("lastUsedExportDirectory", file.getParent());
 
-        String treeText = buildTreeText(Parser.treeRoot, "", true);
+        String treeText = buildTreeText(parser.treeRoot, "", true);
         writer.write(treeText);
         showAlert(AlertType.INFORMATION, "语法树已成功导出至：" + file.getAbsolutePath());
       } catch (IOException e) {
@@ -807,20 +802,33 @@ public class CompilerController {
   }
 
   public void handleGenerateAssembly(ActionEvent event) {
-    if (semanticAnalyzer == null || semanticAnalyzer.middleTableList.isEmpty() || semanticAnalyzer.hasError) {
-      showAlert(AlertType.WARNING, "请先进行并通过语义分析。");
+    if (currentFile == null || isModified.getValue()) {
+      showAlert(AlertType.WARNING, "请先保存当前内容，再执行语义分析");
+      return;
+    }
+    handleSemanticAnalysis(event); // 确保先进行语义分析
+    if (semanticAnalyzer == null || semanticAnalyzer.middleTableList.isEmpty() || semanticAnalyzer.hasError()) {
+      showAlert(AlertType.WARNING, "请先确保语义分析无误");
+      return;
+    }
+
+    AssemblyGenerator assemblyGenerator = new AssemblyGenerator(semanticAnalyzer.constTable, semanticAnalyzer.variableTable, semanticAnalyzer.functionTable, semanticAnalyzer.middleTableList);
+    String assemblyCode = assemblyGenerator.generateAssembly();
+
+    if (assemblyGenerator.hasError()) {
+      showAlert(AlertType.ERROR, "生成汇编代码失败: " + assemblyCode);
       return;
     }
 
     mainTabPane.getSelectionModel().select(4);
-
-    String assemblyCode = new AssemblyGenerator(semanticAnalyzer.constTable, semanticAnalyzer.variableTable, semanticAnalyzer.middleTableList).generateAssembly();
     resArea.setText(assemblyCode);
     // 粘贴到粘贴板
-    Clipboard clipboard = Clipboard.getSystemClipboard();
-    ClipboardContent content = new ClipboardContent();
-    content.putString(assemblyCode);
-    clipboard.setContent(content);
+    Platform.runLater(() -> {
+      Clipboard clipboard = Clipboard.getSystemClipboard();
+      ClipboardContent content = new ClipboardContent();
+      content.putString(assemblyCode);
+      clipboard.setContent(content);
+    });
     // showAlert(AlertType.INFORMATION, "汇编代码已复制到粘贴板。");
   }
 }
