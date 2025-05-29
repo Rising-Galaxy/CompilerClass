@@ -447,7 +447,7 @@ public class Parser {
       // 条件表达式
       TokenTreeView condition = expression();
       condition.setParent(node);
-      condition.setNodeInfo(NodeType.EXPRESSION, "条件表达式");
+      condition.setDescription("条件表达式");
       node.addChild(condition);
 
       // 右括号

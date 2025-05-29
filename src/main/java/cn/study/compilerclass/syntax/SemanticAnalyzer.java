@@ -234,11 +234,34 @@ public class SemanticAnalyzer {
           error(String.format("[r: %d, c: %d]-不是语句", statementNode.getRow(), statementNode.getCol()));
         }
       }
-      // case IF_STMT -> analyzeIfStatement(statementNode);
+      case IF_STMT -> analyzeIfStatement(statementNode);
       // case WHILE_STMT -> analyzeWhileStatement(statementNode);
       default -> error(String.format("[r: %d, c: %d]-不是语句", statementNode.getRow(), statementNode.getCol()));
     }
     processDelayedTasks();
+  }
+
+  private void analyzeIfStatement(TokenTreeView node) {
+    ArrayList<TokenTreeView> children = node.getChildren();
+    // 先分析 if 分支
+    ArrayList<TokenTreeView> ifCondition = children.getFirst().getChildren();
+    Result conditionResult = analyzeExpression(ifCondition.get(1));
+    if (conditionResult.getType().equals("error")) {
+      return;
+    }
+    // 出口
+    int trueOut = emit("jnz", conditionResult.getValue(), "", "0");
+    int falseOut = emit("jz", conditionResult.getValue(), "", "0");
+    // 语句体
+    ArrayList<TokenTreeView> ifBody = children.getLast().getChildren();
+    for (int i = 0; i < ifBody.size(); i++) {
+      if (i == 0){
+        backPatch(trueOut,  String.valueOf(midId));
+      }
+      analyzeStatement(ifBody.get(i));
+    }
+    emit("j", "", "", "0");
+    backPatch(trueOut, String.valueOf(midId));
   }
 
   // 分析函数调用
@@ -456,14 +479,18 @@ public class SemanticAnalyzer {
     } else {
       if (logicNode.getValue().equals("&&")) {
         leftRes = analyzeExpression(logicNode.getChildren().getFirst());
-        backPatch(leftRes.getTC(), String.valueOf(midId));
+        // backPatch(leftRes.getTC(), String.valueOf(midId));
         rightRes = analyzeExpression(logicNode.getChildren().getLast());
-        result = new Result(newTmp(), "bool", merge(leftRes.getFC(), rightRes.getFC()), rightRes.getTC());
+        result = new Result(newTmp(), "bool");
+        emit("&&", leftRes.getValue(), rightRes.getValue(), result.getValue());
+        // result = new Result(newTmp(), "bool", merge(leftRes.getFC(), rightRes.getFC()), rightRes.getTC());
       } else {
         leftRes = analyzeExpression(logicNode.getChildren().getFirst());
-        backPatch(leftRes.getFC(), String.valueOf(midId));
+        // backPatch(leftRes.getFC(), String.valueOf(midId));
         rightRes = analyzeExpression(logicNode.getChildren().getLast());
-        result = new Result(newTmp(), "bool", rightRes.getFC(), merge(leftRes.getTC(), rightRes.getTC()));
+        result = new Result(newTmp(), "bool");
+        emit("||", leftRes.getValue(), rightRes.getValue(), result.getValue());
+        // result = new Result(newTmp(), "bool", rightRes.getFC(), merge(leftRes.getTC(), rightRes.getTC()));
       }
       if (!(leftRes.getType().equals(rightRes.getType()) && leftRes.getType().equals("bool"))) {
         error(String.format("[r: %d, c: %d]-逻辑表达式类型不匹配，左侧为 %s，右侧为 %s", logicNode.getRow(), logicNode.getCol(), leftRes, rightRes));
@@ -484,9 +511,11 @@ public class SemanticAnalyzer {
       error(String.format("[r: %d, c: %d]-关系表达式类型不匹配，左侧为 %s，右侧为 %s", relationalNode.getRow(), relationalNode.getCol(), leftRes.getType(), rightRes.getType()));
       return errorResult;
     }
-    Result result = new Result(newTmp(), "bool", midId, midId + 1);
-    emitDelayed("j" + relationalNode.getChildren().get(1).getValue(), leftRes.getValue(), rightRes.getValue(), "0");
-    emitDelayed("j", "", "", "0");
+    // Result result = new Result(newTmp(), "bool", midId, midId + 1);
+    // emitDelayed("j" + relationalNode.getChildren().get(1).getValue(), leftRes.getValue(), rightRes.getValue(), "0");
+    // emitDelayed("j", "", "", "0");
+    Result result = new Result(newTmp(), "bool");
+    emit( relationalNode.getChildren().get(1).getValue(), leftRes.getValue(), rightRes.getValue(), result.getValue());
     processDelayedTasks();
     return result;
   }
@@ -503,7 +532,7 @@ public class SemanticAnalyzer {
     }
     // 生成四元式
     Result result = new Result(newTmp(), leftRes.getType());
-    emit("+", leftRes.getValue(), rightRes.getValue(), result.getValue());
+    emit(additionNode.getChildren().get(1).getValue(), leftRes.getValue(), rightRes.getValue(), result.getValue());
     processDelayedTasks();
     return result;
   }
@@ -520,7 +549,7 @@ public class SemanticAnalyzer {
     }
     // 生成四元式
     Result result = new Result(newTmp(), leftRes.getType());
-    emit("*", leftRes.getValue(), rightRes.getValue(), result.getValue());
+    emit(multiplicationNode.getChildren().get(1).getValue(), leftRes.getValue(), rightRes.getValue(), result.getValue());
     processDelayedTasks();
     return result;
   }
