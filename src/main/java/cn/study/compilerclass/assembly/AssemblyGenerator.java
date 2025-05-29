@@ -19,6 +19,7 @@ public class AssemblyGenerator {
     this.asmCode = new StringBuilder();
   }
 
+  // 目标机 8086
   public String generateAssembly() {
 
     // 固定模板 1
@@ -107,6 +108,11 @@ public class AssemblyGenerator {
             asmCode.append(String.format("mov %s, ax\n", result));
           }
           case "call" -> {
+            if (arg1.equals("input")) {
+              arg1 = "read";
+            } else if (arg1.equals("output")) {
+              arg1 = "write";
+            }
             asmCode.append(String.format("call %s\n", arg1));
             asmCode.append(String.format("mov %s, ax\n", result));
           }
@@ -122,25 +128,124 @@ public class AssemblyGenerator {
           }
           case "*" -> {
             asmCode.append(String.format("mov ax, %s\n", arg1));
-            asmCode.append(String.format("mov bl, %s\n", arg2));
-            asmCode.append("imul bl\n");
+            asmCode.append(String.format("mov bx, %s\n", arg2));
+            asmCode.append("imul bx\n");
             asmCode.append(String.format("mov %s, ax\n", result));
           }
           case "/" -> {
             asmCode.append(String.format("mov ax, %s\n", arg1));
-            asmCode.append(String.format("mov bl, %s\n", arg2));
-            asmCode.append("idiv bl\n");
+            asmCode.append("cwd\n");  // 扩展AX到DX:AX用于有符号除法
+            asmCode.append(String.format("mov bx, %s\n", arg2));
+            asmCode.append("idiv bx\n");
             asmCode.append(String.format("mov %s, ax\n", result));
           }
           case "%" -> {
             asmCode.append(String.format("mov ax, %s\n", arg1));
-            asmCode.append(String.format("mov bl, %s\n", arg2));
-            asmCode.append("idiv bl\n");
-            asmCode.append(String.format("mov %s, dx\n", result));
+            asmCode.append("cwd\n");
+            asmCode.append(String.format("mov bx, %s\n", arg2));
+            asmCode.append("idiv bx\n");
+            asmCode.append(String.format("mov %s, dx\n", result));  // 余数在DX中
           }
           case "para" -> {
             asmCode.append(String.format("mov ax, %s\n", arg1));
             asmCode.append("push ax\n");
+          }
+          case "j" -> {
+            asmCode.append(String.format("jmp far ptr _%s\n", result));
+          }
+          case "jz" -> {
+            asmCode.append(String.format("mov ax, %s\n", arg1)); // 将 arg1 的值移动到 AX 寄存器
+            asmCode.append("cmp ax, 0\n"); // 比较 AX 寄存器的值是否为 0
+            asmCode.append(String.format("jne _ne_%d\n", id)); // 如果 AX 寄存器的值不为 0，跳转到 ne_id
+            asmCode.append(String.format("jmp far ptr _%s\n", result)); // 否则跳转到 result
+            asmCode.append(String.format("_ne_%d: nop\n", id)); // ne_id 处的空操作
+          }
+          case "jnz" -> {
+            asmCode.append(String.format("mov ax, %s\n", arg1)); // 将 arg1 的值移动到 AX 寄存器
+            asmCode.append("cmp ax, 0\n"); // 比较 AX 寄存器的值是否为 0
+            asmCode.append(String.format("je _ez_%d\n", id)); // 如果 AX 寄存器的值为 0，跳转到 ez_id
+            asmCode.append(String.format("jmp far ptr _%s\n", result)); // 否则跳转到 result
+            asmCode.append(String.format("_ez_%d: nop\n", id)); // ez_id 处的空操作
+          }
+          case ">" -> {
+            asmCode.append("mov dx, 1\n"); // 默认结果为真
+            asmCode.append(String.format("mov ax, %s\n", arg1)); // AX中存储的是arg1的值
+            asmCode.append(String.format("cmp ax, %s\n", arg2)); // 比较arg1和arg2
+            asmCode.append(String.format("jg _g_%d\n", id)); // 如果arg1大于arg2，跳转到_g_id
+            asmCode.append("mov dx, 0\n"); // 如果不满足条件，将dx设为0
+            asmCode.append(String.format("_g_%d: mov %s, dx\n", id, result)); // 将结果存储到result中
+          }
+          case "<" -> {
+            asmCode.append("mov dx, 1\n");
+            asmCode.append(String.format("mov ax, %s\n", arg1));
+            asmCode.append(String.format("cmp ax, %s\n", arg2));
+            asmCode.append(String.format("jl _l_%d\n", id));
+            asmCode.append("mov dx, 0\n");
+            asmCode.append(String.format("_l_%d: mov %s, dx\n", id, result));
+          }
+          case ">=" -> {
+            asmCode.append("mov dx, 1\n");
+            asmCode.append(String.format("mov ax, %s\n", arg1));
+            asmCode.append(String.format("cmp ax, %s\n", arg2));
+            asmCode.append(String.format("jge _ge_%d\n", id));
+            asmCode.append("mov dx, 0\n");
+            asmCode.append(String.format("_ge_%d: mov %s, dx\n", id, result));
+          }
+          case "<=" -> {
+            asmCode.append("mov dx, 1\n");
+            asmCode.append(String.format("mov ax, %s\n", arg1));
+            asmCode.append(String.format("cmp ax, %s\n", arg2));
+            asmCode.append(String.format("jle _le_%d\n", id));
+            asmCode.append("mov dx, 0\n");
+            asmCode.append(String.format("_le_%d: mov %s, dx\n", id, result));
+          }
+          case "==" -> {
+            asmCode.append("mov dx, 1\n");
+            asmCode.append(String.format("mov ax, %s\n", arg1));
+            asmCode.append(String.format("cmp ax, %s\n", arg2));
+            asmCode.append(String.format("je _ez_%d\n", id)); // 如果相等，跳转到 ez_id
+            asmCode.append("mov dx, 0\n");
+            asmCode.append(String.format("_ez_%d: mov %s, dx\n", id, result));
+          }
+          case "!=" -> {
+            asmCode.append("mov dx, 1\n");
+            asmCode.append(String.format("mov ax, %s\n", arg1));
+            asmCode.append(String.format("cmp ax, %s\n", arg2));
+            asmCode.append(String.format("jne _ne_%d\n", id)); // 如果不相等，跳转到 ne_id
+            asmCode.append("mov dx, 0\n");
+            asmCode.append(String.format("_ne_%d: mov %s, dx\n", id, result));
+          }
+          case "&&" -> {
+            // && arg1 arg2 result
+            asmCode.append("mov dx, 0\n"); // 默认结果为假
+            asmCode.append(String.format("mov ax, %s\n", arg1)); // 将 arg1 的值移动到 AX 寄存器
+            asmCode.append("cmp ax, 0\n"); // 比较 AX 寄存器的值是否为 0
+            asmCode.append(String.format("je _and_false_%d\n", id)); // 如果 arg1 为假，跳转到 and_false_id
+            asmCode.append(String.format("mov ax, %s\n", arg2)); // 将 arg2 的值移动到 AX 寄存器
+            asmCode.append("cmp ax, 0\n"); // 比较 AX 寄存器的值是否为 0
+            asmCode.append(String.format("je _and_false_%d\n", id)); // 如果 arg2 为假，跳转到 and_false_id
+            asmCode.append("mov dx, 1\n"); // 如果 arg1 和 arg2 都为真，将 dx 设为 1
+            asmCode.append(String.format("_and_false_%d: mov %s, dx\n", id, result)); // 将结果存储到 result 中
+          }
+          case "||" -> {
+            // || arg1 arg2 result
+            asmCode.append("mov dx, 1\n"); // 默认结果为真
+            asmCode.append(String.format("mov ax, %s\n", arg1)); // 将 arg1 的值移动到 AX 寄存器
+            asmCode.append("cmp ax, 0\n"); // 比较 AX 寄存器的值是否为 0
+            asmCode.append(String.format("jne _or_true_%d\n", id)); // 如果 arg1 为真，跳转到 or_true_id
+            asmCode.append(String.format("mov ax, %s\n", arg2)); // 将 arg2 的值移动到 AX 寄存器
+            asmCode.append("cmp ax, 0\n"); // 比较 AX 寄存器的值是否为 0
+            asmCode.append(String.format("jne _or_true_%d\n", id)); // 如果 arg2 为真，跳转到 or_true_id
+            asmCode.append("mov dx, 0\n"); // 如果 arg1 和 arg2 都为假，将 dx 设为 0
+            asmCode.append(String.format("_or_true_%d: mov %s, dx\n", id, result)); // 将结果存储到 result 中
+          }
+          case "!" -> {
+            asmCode.append("mov dx, 1\n");
+            asmCode.append(String.format("mov ax, %s\n", arg1)); // 将 arg1 的值移动到 AX 寄存器
+            asmCode.append("cmp ax, 0\n"); // 比较 AX 寄存器的值是否为 0
+            asmCode.append(String.format("je _not_true_%d\n", id)); // 如果 arg1 为假，跳转到 not_true_id
+            asmCode.append("mov dx, 0\n"); // 如果 arg1 为真，将 dx 设为 0
+            asmCode.append(String.format("_not_true_%d: mov %s, dx\n", id, result)); // 将结果存储到 result 中
           }
         }
       }
@@ -291,9 +396,14 @@ public class AssemblyGenerator {
     // }
     // 如果是临时变量名，直接返回
     if (str.startsWith("$_t")) {
-      return String.format("es:[%s]", str.substring(3));
+      return String.format("es:[%s]", Integer.parseInt(str.substring(3)) * 2);
     }
-    // 其他情况直接返回
+    // Bool 值
+    if (str.equals("True")) {
+      return "1";
+    } else if (str.equals("False")) {
+      return "0";
+    }
     return str;
   }
 }

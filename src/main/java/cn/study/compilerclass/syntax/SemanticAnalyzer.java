@@ -242,6 +242,7 @@ public class SemanticAnalyzer {
     processDelayedTasks();
   }
 
+  // 分析条件语句
   private void analyzeIfStatement(TokenTreeView node) {
     info(String.format("分析条件语句: [r: %d, c: %d]", node.getRow(), node.getCol()));
     ArrayList<TokenTreeView> children = node.getChildren();
@@ -411,7 +412,7 @@ public class SemanticAnalyzer {
       case FUNCTION_CALL -> analyzeFunctionCall(expressionNode);
       case LITERAL_INT -> new Result(expressionNode.getValue(), "int");
       case LITERAL_FLOAT -> new Result(expressionNode.getValue(), "float");
-      case LITERAL_CHAR -> new Result(expressionNode.getValue(), "char");
+      case LITERAL_CHAR -> new Result(String.format("'%s'", expressionNode.getValue()), "char");
       case LITERAL_BOOL -> new Result(expressionNode.getValue(), "bool");
       case IDENTIFIER, PARAM -> {
         String identifierName = expressionNode.getValue();
