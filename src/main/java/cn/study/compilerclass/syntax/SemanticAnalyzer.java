@@ -901,17 +901,6 @@ public class SemanticAnalyzer {
 
     private String value;
     private String type;
-    private int CHAIN;
-    // private int TC;
-    // private int FC;
-
-    public Result(String value, String type) {
-      this.value = value;
-      this.type = type;
-      this.CHAIN = 0;
-      // this.TC = 0;
-      // this.FC = 0;
-    }
   }
 }
 
