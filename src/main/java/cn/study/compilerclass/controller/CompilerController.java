@@ -137,6 +137,196 @@ public class CompilerController {
   @FXML
   private TabPane mainTabPane;
 
+  // 词法分析
+  @FXML
+  private void handleLexicalAnalysis(ActionEvent event) {
+    if (currentFile == null || isModified.getValue()) {
+      showAlert(AlertType.WARNING, "请先保存当前内容，再进行词法分析。");
+      return;
+    }
+
+    // 切换到词法分析选项卡
+    mainTabPane.getSelectionModel().select(0);
+
+    String sourceCode = codeArea.getText();
+    if (sourceCode == null || sourceCode.trim().isEmpty()) {
+      outArea.setText("源代码为空，无法进行词法分析。");
+      outPane.setExpanded(true);
+      return;
+    }
+
+    OutInfo outInfos = new OutInfo();
+    Lexer lexer = new Lexer(sourceCode, outInfos);
+    List<Token> tokens = lexer.analyze();
+
+    // 添加到表格中
+    indexColumn.setCellValueFactory(new PropertyValueFactory<>("index"));
+    wordColumn.setCellValueFactory(new PropertyValueFactory<>("value"));
+    codeColumn.setCellValueFactory(new PropertyValueFactory<>("type"));
+    posColumn.setCellValueFactory(new PropertyValueFactory<>("pos"));
+    ObservableList<TokenView> tokenViews = tokens.stream()
+                                                 .map(token -> token.toView(tokens.indexOf(token)))
+                                                 .collect(Collectors.toCollection(FXCollections::observableArrayList));
+    resultTable.setItems(tokenViews);
+
+    if (!outInfos.isEmpty()) {
+      if (outInfos.hasError()) {
+        outInfos.error("词法分析", "词法分析过程中发生错误。");
+      } else {
+        // 自动导出 Token 列表到同级目录 {文件名}_tokens.json 文件
+        try {
+          Gson gson = new GsonBuilder().disableHtmlEscaping().create();
+          String json = gson.toJson(tokens);
+          String fileName = getFileNameWithoutExtension(currentFile.getName());
+          String filePath = currentFile.getParent() + File.separator + fileName + "_tokens.json";
+          Files.writeString(new File(filePath).toPath(), json, StandardCharsets.UTF_8);
+          outInfos.info("词法分析", "结果已自动保存到同级目录 " + fileName + "_tokens.json 文件。");
+        } catch (IOException e) {
+          outInfos.error("词法分析", "保存词法分析结果到文件时发生错误: " + e.getMessage());
+        }
+      }
+      outArea.setText(outInfos.toString());
+      outPane.setExpanded(true);
+    }
+  }
+
+  // 语法分析
+  @FXML
+  private void handleSyntaxAnalysis(ActionEvent event) {
+    if (currentFile == null || isModified.getValue()) {
+      showAlert(AlertType.WARNING, "请先保存当前内容，再进行语法分析。");
+      return;
+    }
+    handleLexicalAnalysis(event); // 确保先进行词法分析
+    // 确保样式类被应用
+    resultTreeView.getStyleClass().add("result-tree");
+    OutInfo outInfo = new OutInfo();
+    String fileName = getFileNameWithoutExtension(currentFile.getName());
+    parser = new Parser(currentFile.getParent() + File.separator + fileName + "_tokens.json", outInfo);
+    parser.parse();
+    // treeRoot 应该在 parser.parse() 后被赋值
+    if (parser.treeRoot != null) {
+      parser.getTreeView(resultTreeView);
+
+      // 自动导出语法树到同级目录 {文件名}_tree.txt 文件
+      if (!outInfo.hasError()) {
+        try {
+          String treeText = buildTreeText(parser.treeRoot, "", true);
+          String filePath = currentFile.getParent() + File.separator + fileName + "_tree.txt";
+          Files.writeString(new File(filePath).toPath(), treeText, StandardCharsets.UTF_8);
+          outInfo.info("语法分析", "语法树已自动保存到同级目录 " + fileName + "_tree.txt 文件。");
+        } catch (IOException e) {
+          outInfo.error("语法分析", "保存语法树到文件时发生错误: " + e.getMessage());
+        }
+      }
+    } else {
+      log.warn("语法分析后 treeRoot 仍为 null");
+    }
+
+    // 切换到语法分析选项卡
+    mainTabPane.getSelectionModel().select(1);
+
+    if (!outInfo.isEmpty()) {
+      outArea.setText(outInfo.toString());
+      outPane.setExpanded(true);
+    }
+  }
+
+  // 语义分析和生成四元式
+  @FXML
+  private void handleSemanticAnalysis(ActionEvent event) {
+    if (currentFile == null || isModified.getValue()) {
+      showAlert(AlertType.WARNING, "请先保存当前内容，再执行语义分析");
+      return;
+    }
+    handleSyntaxAnalysis(event); // 确保先进行语法分析
+    if (parser == null || parser.hasError()) {
+      showAlert(AlertType.WARNING, "无法进行语义分析，请先确保语法分析无误");
+      return;
+    }
+    OutInfo outInfo = new OutInfo();
+    semanticAnalyzer = new SemanticAnalyzer(outInfo);
+
+    // 切换到语义分析选项卡
+    mainTabPane.getSelectionModel().select(2);
+    semanticAnalyzer.analyze(parser.treeRoot); // 使用 Parser.treeRoot
+
+    // 获取分析结果并转换为ObservableList
+    ObservableList<ConstTableEntry> constData = FXCollections.observableArrayList(semanticAnalyzer.getConstTableEntries());
+    setConstTableData(constData);
+
+    ObservableList<VariableTableEntry> variableData = FXCollections.observableArrayList(semanticAnalyzer.getVariableTableEntries());
+    setVariableTableData(variableData);
+
+    ObservableList<FunctionTableEntry> functionData = FXCollections.observableArrayList(semanticAnalyzer.getFunctionTableEntries());
+    setFunctionTableData(functionData);
+
+    ObservableList<MiddleTableEntry> middleData = FXCollections.observableArrayList(semanticAnalyzer.getMiddleTableEntries());
+    setMiddleTableData(middleData);
+
+    // 自动导出四元式到同级目录 {文件名}_middle.txt 文件
+    if (!outInfo.hasError() && !semanticAnalyzer.getMiddleTableEntries().isEmpty()) {
+      try {
+        String fileName = getFileNameWithoutExtension(currentFile.getName());
+        String middleText = formatMiddleTable(semanticAnalyzer.getMiddleTableEntries());
+        String filePath = currentFile.getParent() + File.separator + fileName + "_middle.txt";
+        Files.writeString(new File(filePath).toPath(), middleText, StandardCharsets.UTF_8);
+        outInfo.info("语义分析", "四元式已自动保存到同级目录 " + fileName + "_middle.txt 文件。");
+      } catch (IOException e) {
+        outInfo.error("语义分析", "保存四元式到文件时发生错误: " + e.getMessage());
+      }
+    }
+
+    if (!outInfo.isEmpty()) {
+      outArea.setText(outInfo.toString());
+      outPane.setExpanded(true);
+    }
+  }
+
+  // 生成汇编代码
+  public void handleGenerateAssembly(ActionEvent event) {
+    if (currentFile == null || isModified.getValue()) {
+      showAlert(AlertType.WARNING, "请先保存当前内容，再执行语义分析");
+      return;
+    }
+    handleSemanticAnalysis(event); // 确保先进行语义分析
+    if (semanticAnalyzer == null || semanticAnalyzer.middleTableList.isEmpty() || semanticAnalyzer.hasError()) {
+      showAlert(AlertType.WARNING, "请先确保语义分析无误");
+      return;
+    }
+
+    AssemblyGenerator assemblyGenerator = new AssemblyGenerator(semanticAnalyzer.constTable, semanticAnalyzer.variableTable, semanticAnalyzer.functionTable, semanticAnalyzer.middleTableList);
+    String assemblyCode = assemblyGenerator.generateAssembly();
+
+    if (assemblyGenerator.hasError()) {
+      showAlert(AlertType.ERROR, "生成汇编代码失败: " + assemblyCode);
+      return;
+    }
+
+    mainTabPane.getSelectionModel().select(4);
+    resArea.setText(assemblyCode);
+
+    // 自动导出汇编代码到同级目录 {文件名}.asm 文件
+    try {
+      String fileName = getFileNameWithoutExtension(currentFile.getName());
+      String filePath = currentFile.getParent() + File.separator + fileName + ".asm";
+      Files.writeString(new File(filePath).toPath(), assemblyCode, StandardCharsets.UTF_8);
+      // 可以选择显示成功信息或者静默保存
+      // showAlert(AlertType.INFORMATION, "汇编代码已自动保存到同级目录 " + fileName + ".asm 文件。");
+    } catch (IOException e) {
+      showAlert(AlertType.ERROR, "保存汇编代码到文件时发生错误: " + e.getMessage());
+    }
+
+    // 粘贴到粘贴板
+    Platform.runLater(() -> {
+      Clipboard clipboard = Clipboard.getSystemClipboard();
+      ClipboardContent content = new ClipboardContent();
+      content.putString(assemblyCode);
+      clipboard.setContent(content);
+    });
+    // showAlert(AlertType.INFORMATION, "汇编代码已复制到粘贴板。");
+  }
+
   @FXML
   public void initialize() {
     setupLineNumbers(codeArea, lineNumbersCode);
@@ -236,74 +426,8 @@ public class CompilerController {
     midResultColumn.setCellValueFactory(new PropertyValueFactory<>("result"));
   }
 
-  @FXML
-  private void handleSyntaxAnalysis(ActionEvent event) {
-    if (currentFile == null || isModified.getValue()) {
-      showAlert(AlertType.WARNING, "请先保存当前内容，再进行语法分析。");
-      return;
-    }
-    handleLexicalAnalysis(event); // 确保先进行词法分析
-    // 确保样式类被应用
-    resultTreeView.getStyleClass().add("result-tree");
-    OutInfo outInfo = new OutInfo();
-    parser = new Parser(currentFile.getParent() + File.separator + "lex_tokens.json", outInfo);
-    parser.parse();
-    // treeRoot 应该在 parser.parse() 后被赋值
-    if (parser.treeRoot != null) {
-      parser.getTreeView(resultTreeView);
-    } else {
-      log.warn("语法分析后 treeRoot 仍为 null");
-    }
-
-    // 切换到语法分析选项卡
-    mainTabPane.getSelectionModel().select(1);
-
-    if (!outInfo.isEmpty()) {
-      outArea.setText(outInfo.toString());
-      outPane.setExpanded(true);
-    }
-  }
-
   private void showAlert(Alert.AlertType type, String message) {
     new Alert(type, message, ButtonType.OK).showAndWait();
-  }
-
-  // 语义分析
-  @FXML
-  private void handleSemanticAnalysis(ActionEvent event) {
-    if (currentFile == null || isModified.getValue()) {
-      showAlert(AlertType.WARNING, "请先保存当前内容，再执行语义分析");
-      return;
-    }
-    handleSyntaxAnalysis(event); // 确保先进行语法分析
-    if (parser == null || parser.hasError()) {
-      showAlert(AlertType.WARNING, "无法进行语义分析，请先确保语法分析无误");
-      return;
-    }
-    OutInfo outInfo = new OutInfo();
-    semanticAnalyzer = new SemanticAnalyzer(outInfo);
-
-    // 切换到语义分析选项卡
-    mainTabPane.getSelectionModel().select(2);
-    semanticAnalyzer.analyze(parser.treeRoot); // 使用 Parser.treeRoot
-
-    // 获取分析结果并转换为ObservableList
-    ObservableList<ConstTableEntry> constData = FXCollections.observableArrayList(semanticAnalyzer.getConstTableEntries());
-    setConstTableData(constData);
-
-    ObservableList<VariableTableEntry> variableData = FXCollections.observableArrayList(semanticAnalyzer.getVariableTableEntries());
-    setVariableTableData(variableData);
-
-    ObservableList<FunctionTableEntry> functionData = FXCollections.observableArrayList(semanticAnalyzer.getFunctionTableEntries());
-    setFunctionTableData(functionData);
-
-    ObservableList<MiddleTableEntry> middleData = FXCollections.observableArrayList(semanticAnalyzer.getMiddleTableEntries());
-    setMiddleTableData(middleData);
-
-    if (!outInfo.isEmpty()) {
-      outArea.setText(outInfo.toString());
-      outPane.setExpanded(true);
-    }
   }
 
   public void setConstTableData(ObservableList<ConstTableEntry> data) {
@@ -320,11 +444,6 @@ public class CompilerController {
 
   public void setMiddleTableData(ObservableList<MiddleTableEntry> data) {
     middleTable.setItems(data);
-  }
-
-  // 统一处理制表符替换
-  private String replaceTabs(String text) {
-    return text.replace("\t", "  ");
   }
 
   private void updatePosLabel(TextArea area) {
@@ -439,57 +558,6 @@ public class CompilerController {
       deleteItem.setDisable(!hasSelection || !isEditable);
       selectAllItem.setDisable(!hasContent);
     });
-  }
-
-  @FXML
-  private void handleLexicalAnalysis(ActionEvent event) {
-    if (currentFile == null || isModified.getValue()) {
-      showAlert(AlertType.WARNING, "请先保存当前内容，再进行词法分析。");
-      return;
-    }
-
-    // 切换到词法分析选项卡
-    mainTabPane.getSelectionModel().select(0);
-
-    String sourceCode = codeArea.getText();
-    if (sourceCode == null || sourceCode.trim().isEmpty()) {
-      outArea.setText("源代码为空，无法进行词法分析。");
-      outPane.setExpanded(true);
-      return;
-    }
-
-    OutInfo outInfos = new OutInfo();
-    Lexer lexer = new Lexer(sourceCode, outInfos);
-    List<Token> tokens = lexer.analyze();
-
-    // 添加到表格中
-    indexColumn.setCellValueFactory(new PropertyValueFactory<>("index"));
-    wordColumn.setCellValueFactory(new PropertyValueFactory<>("value"));
-    codeColumn.setCellValueFactory(new PropertyValueFactory<>("type"));
-    posColumn.setCellValueFactory(new PropertyValueFactory<>("pos"));
-    ObservableList<TokenView> tokenViews = tokens.stream()
-                                                 .map(token -> token.toView(tokens.indexOf(token)))
-                                                 .collect(Collectors.toCollection(FXCollections::observableArrayList));
-    resultTable.setItems(tokenViews);
-
-    if (!outInfos.isEmpty()) {
-      if (outInfos.hasError()) {
-        outInfos.error("词法分析", "词法分析过程中发生错误。");
-      } else {
-        // 输出 Token 列表到同级目录 lex_tokens.json 文件
-        try {
-          Gson gson = new GsonBuilder().disableHtmlEscaping().create();
-          String json = gson.toJson(tokens);
-          String filePath = currentFile.getParent() + File.separator + "lex_tokens.json";
-          Files.writeString(new File(filePath).toPath(), json, StandardCharsets.UTF_8);
-          outInfos.info("词法分析", "结果已保存到同级目录 lex_tokens.json 文件。");
-        } catch (IOException e) {
-          outInfos.error("词法分析", "保存词法分析结果到文件时发生错误: " + e.getMessage());
-        }
-      }
-      outArea.setText(outInfos.toString());
-      outPane.setExpanded(true);
-    }
   }
 
   @FXML
@@ -740,45 +808,6 @@ public class CompilerController {
     }
   }
 
-  @FXML
-  private void handleExportSyntaxTree(ActionEvent event) {
-    if (currentFile == null || isModified.getValue() || parser == null || parser.treeRoot == null) {
-      showAlert(AlertType.WARNING, "请先保存当前内容，进行语法分析得到语法树后再尝试导出。");
-      return;
-    }
-
-    FileChooser fileChooser = new FileChooser();
-    fileChooser.setTitle("导出语法树");
-
-    // 设置默认文件名
-    fileChooser.setInitialFileName("ParserTree.txt");
-
-    // 新增路径记忆功能
-    Preferences prefs = Preferences.userNodeForPackage(CompilerController.class);
-    String lastUsedExportDirectory = prefs.get("lastUsedExportDirectory", System.getProperty("user.home"));
-    File initialDirectory = new File(lastUsedExportDirectory);
-    if (initialDirectory.exists() && initialDirectory.isDirectory()) {
-      fileChooser.setInitialDirectory(initialDirectory);
-    }
-
-    fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("文本文件", "*.txt"));
-    File file = fileChooser.showSaveDialog(stage);
-
-    if (file != null) {
-      try (FileWriter writer = new FileWriter(file)) {
-        // 保存当前目录到首选项
-        prefs.put("lastUsedExportDirectory", file.getParent());
-
-        String treeText = buildTreeText(parser.treeRoot, "", true);
-        writer.write(treeText);
-        showAlert(AlertType.INFORMATION, "语法树已成功导出至：" + file.getAbsolutePath());
-      } catch (IOException e) {
-        log.error("导出失败", e);
-        showAlert(AlertType.ERROR, "导出失败：" + e.getMessage());
-      }
-    }
-  }
-
   private String buildTreeText(TokenTreeView node, String indent, boolean isLast) {
     StringBuilder sb = new StringBuilder();
     sb.append(indent);
@@ -801,34 +830,23 @@ public class CompilerController {
     return sb.toString();
   }
 
-  public void handleGenerateAssembly(ActionEvent event) {
-    if (currentFile == null || isModified.getValue()) {
-      showAlert(AlertType.WARNING, "请先保存当前内容，再执行语义分析");
-      return;
+  private String getFileNameWithoutExtension(String fileName) {
+    int lastDotIndex = fileName.lastIndexOf('.');
+    if (lastDotIndex > 0) {
+      return fileName.substring(0, lastDotIndex);
     }
-    handleSemanticAnalysis(event); // 确保先进行语义分析
-    if (semanticAnalyzer == null || semanticAnalyzer.middleTableList.isEmpty() || semanticAnalyzer.hasError()) {
-      showAlert(AlertType.WARNING, "请先确保语义分析无误");
-      return;
-    }
+    return fileName;
+  }
 
-    AssemblyGenerator assemblyGenerator = new AssemblyGenerator(semanticAnalyzer.constTable, semanticAnalyzer.variableTable, semanticAnalyzer.functionTable, semanticAnalyzer.middleTableList);
-    String assemblyCode = assemblyGenerator.generateAssembly();
+  private String formatMiddleTable(List<MiddleTableEntry> middleTableEntries) {
+    StringBuilder sb = new StringBuilder();
+    sb.append("四元式表\n");
+    sb.append("===========================================\n");
 
-    if (assemblyGenerator.hasError()) {
-      showAlert(AlertType.ERROR, "生成汇编代码失败: " + assemblyCode);
-      return;
+    for (MiddleTableEntry entry : middleTableEntries) {
+      sb.append(String.format("%d.(%s, %s, %s, %s)\n", entry.getId(), entry.getOp() != null ? entry.getOp() : "-", entry.getArg1() != null ? entry.getArg1() : "-", entry.getArg2() != null ? entry.getArg2() : "-", entry.getResult() != null ? entry.getResult() : "-"));
     }
 
-    mainTabPane.getSelectionModel().select(4);
-    resArea.setText(assemblyCode);
-    // 粘贴到粘贴板
-    Platform.runLater(() -> {
-      Clipboard clipboard = Clipboard.getSystemClipboard();
-      ClipboardContent content = new ClipboardContent();
-      content.putString(assemblyCode);
-      clipboard.setContent(content);
-    });
-    // showAlert(AlertType.INFORMATION, "汇编代码已复制到粘贴板。");
+    return sb.toString();
   }
 }
