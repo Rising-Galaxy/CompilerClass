@@ -15,16 +15,16 @@ import cn.study.compilerclass.utils.Debouncer;
 import cn.study.compilerclass.utils.OutInfo;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import java.io.FileWriter;
+import java.awt.Desktop;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.prefs.Preferences;
 import java.util.stream.Collectors;
 import javafx.application.Platform;
 import javafx.beans.property.SimpleBooleanProperty;
+import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.event.ActionEvent;
@@ -35,7 +35,6 @@ import javafx.scene.control.Alert.AlertType;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
-import javafx.scene.input.DataFormat;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyCodeCombination;
 import javafx.scene.input.KeyCombination;
@@ -54,6 +53,7 @@ public class CompilerController {
   private Parser parser;
   private File currentFile;
   private SimpleBooleanProperty isModified = new SimpleBooleanProperty(false);
+  public static SimpleStringProperty outs = new SimpleStringProperty("");
 
   @FXML
   private TableView<ConstTableEntry> constTable;
@@ -130,12 +130,14 @@ public class CompilerController {
   @FXML
   private Label fileLabel;
   private String statusLabel = "源程序";
-  private int lineWidth = 2;
+  private int lineSrcWidth = 2;
+  private int lineResWidth = 2;
   private final Debouncer debouncer = new Debouncer(300);
   private String fileTooltip = "未命名文件";
   private Tooltip tooltip;
   @FXML
   private TabPane mainTabPane;
+  private OutInfo outInfos;
 
   // 词法分析
   @FXML
@@ -144,6 +146,7 @@ public class CompilerController {
       showAlert(AlertType.WARNING, "请先保存当前内容，再进行词法分析。");
       return;
     }
+    outInfos.clear();
 
     // 切换到词法分析选项卡
     mainTabPane.getSelectionModel().select(0);
@@ -155,7 +158,7 @@ public class CompilerController {
       return;
     }
 
-    OutInfo outInfos = new OutInfo();
+    outInfos = new OutInfo();
     Lexer lexer = new Lexer(sourceCode, outInfos);
     List<Token> tokens = lexer.analyze();
 
@@ -169,24 +172,20 @@ public class CompilerController {
                                                  .collect(Collectors.toCollection(FXCollections::observableArrayList));
     resultTable.setItems(tokenViews);
 
-    if (!outInfos.isEmpty()) {
-      if (outInfos.hasError()) {
-        outInfos.error("词法分析", "词法分析过程中发生错误。");
-      } else {
-        // 自动导出 Token 列表到同级目录 {文件名}_tokens.json 文件
-        try {
-          Gson gson = new GsonBuilder().disableHtmlEscaping().create();
-          String json = gson.toJson(tokens);
-          String fileName = getFileNameWithoutExtension(currentFile.getName());
-          String filePath = currentFile.getParent() + File.separator + fileName + "_tokens.json";
-          Files.writeString(new File(filePath).toPath(), json, StandardCharsets.UTF_8);
-          outInfos.info("词法分析", "结果已自动保存到同级目录 " + fileName + "_tokens.json 文件。");
-        } catch (IOException e) {
-          outInfos.error("词法分析", "保存词法分析结果到文件时发生错误: " + e.getMessage());
-        }
+    if (outInfos.hasError()) {
+      outInfos.error("词法分析", "词法分析过程中发生错误。");
+    } else {
+      // 自动导出 Token 列表到同级目录 {文件名}_tokens.json 文件
+      try {
+        Gson gson = new GsonBuilder().disableHtmlEscaping().create();
+        String json = gson.toJson(tokens);
+        String fileName = getFileNameWithoutExtension(currentFile.getName());
+        String filePath = currentFile.getParent() + File.separator + fileName + "_tokens.json";
+        Files.writeString(new File(filePath).toPath(), json, StandardCharsets.UTF_8);
+        outInfos.info("词法分析", "结果已自动保存到同级目录 " + fileName + "_tokens.json 文件。");
+      } catch (IOException e) {
+        outInfos.error("词法分析", "保存词法分析结果到文件时发生错误: " + e.getMessage());
       }
-      outArea.setText(outInfos.toString());
-      outPane.setExpanded(true);
     }
   }
 
@@ -200,23 +199,23 @@ public class CompilerController {
     handleLexicalAnalysis(event); // 确保先进行词法分析
     // 确保样式类被应用
     resultTreeView.getStyleClass().add("result-tree");
-    OutInfo outInfo = new OutInfo();
+
     String fileName = getFileNameWithoutExtension(currentFile.getName());
-    parser = new Parser(currentFile.getParent() + File.separator + fileName + "_tokens.json", outInfo);
+    parser = new Parser(currentFile.getParent() + File.separator + fileName + "_tokens.json", outInfos);
     parser.parse();
     // treeRoot 应该在 parser.parse() 后被赋值
     if (parser.treeRoot != null) {
       parser.getTreeView(resultTreeView);
 
       // 自动导出语法树到同级目录 {文件名}_tree.txt 文件
-      if (!outInfo.hasError()) {
+      if (!outInfos.hasError()) {
         try {
           String treeText = buildTreeText(parser.treeRoot, "", true);
           String filePath = currentFile.getParent() + File.separator + fileName + "_tree.txt";
           Files.writeString(new File(filePath).toPath(), treeText, StandardCharsets.UTF_8);
-          outInfo.info("语法分析", "语法树已自动保存到同级目录 " + fileName + "_tree.txt 文件。");
+          outInfos.info("语法分析", "语法树已自动保存到同级目录 " + fileName + "_tree.txt 文件。");
         } catch (IOException e) {
-          outInfo.error("语法分析", "保存语法树到文件时发生错误: " + e.getMessage());
+          outInfos.error("语法分析", "保存语法树到文件时发生错误: " + e.getMessage());
         }
       }
     } else {
@@ -225,11 +224,6 @@ public class CompilerController {
 
     // 切换到语法分析选项卡
     mainTabPane.getSelectionModel().select(1);
-
-    if (!outInfo.isEmpty()) {
-      outArea.setText(outInfo.toString());
-      outPane.setExpanded(true);
-    }
   }
 
   // 语义分析和生成四元式
@@ -244,8 +238,8 @@ public class CompilerController {
       showAlert(AlertType.WARNING, "无法进行语义分析，请先确保语法分析无误");
       return;
     }
-    OutInfo outInfo = new OutInfo();
-    semanticAnalyzer = new SemanticAnalyzer(outInfo);
+
+    semanticAnalyzer = new SemanticAnalyzer(outInfos);
 
     // 切换到语义分析选项卡
     mainTabPane.getSelectionModel().select(2);
@@ -265,21 +259,16 @@ public class CompilerController {
     setMiddleTableData(middleData);
 
     // 自动导出四元式到同级目录 {文件名}_middle.txt 文件
-    if (!outInfo.hasError() && !semanticAnalyzer.getMiddleTableEntries().isEmpty()) {
+    if (!outInfos.hasError() && !semanticAnalyzer.getMiddleTableEntries().isEmpty()) {
       try {
         String fileName = getFileNameWithoutExtension(currentFile.getName());
         String middleText = formatMiddleTable(semanticAnalyzer.getMiddleTableEntries());
         String filePath = currentFile.getParent() + File.separator + fileName + "_middle.txt";
         Files.writeString(new File(filePath).toPath(), middleText, StandardCharsets.UTF_8);
-        outInfo.info("语义分析", "四元式已自动保存到同级目录 " + fileName + "_middle.txt 文件。");
+        outInfos.info("语义分析", "四元式已自动保存到同级目录 " + fileName + "_middle.txt 文件。");
       } catch (IOException e) {
-        outInfo.error("语义分析", "保存四元式到文件时发生错误: " + e.getMessage());
+        outInfos.error("语义分析", "保存四元式到文件时发生错误: " + e.getMessage());
       }
-    }
-
-    if (!outInfo.isEmpty()) {
-      outArea.setText(outInfo.toString());
-      outPane.setExpanded(true);
     }
   }
 
@@ -295,15 +284,15 @@ public class CompilerController {
       return;
     }
 
-    AssemblyGenerator assemblyGenerator = new AssemblyGenerator(semanticAnalyzer.constTable, semanticAnalyzer.variableTable, semanticAnalyzer.functionTable, semanticAnalyzer.middleTableList);
+    AssemblyGenerator assemblyGenerator = new AssemblyGenerator(semanticAnalyzer.constTable, semanticAnalyzer.variableTable, semanticAnalyzer.functionTable, semanticAnalyzer.middleTableList, outInfos);
     String assemblyCode = assemblyGenerator.generateAssembly();
 
-    if (assemblyGenerator.hasError()) {
-      showAlert(AlertType.ERROR, "生成汇编代码失败: " + assemblyCode);
+    if (outInfos.hasError()) {
       return;
     }
 
     mainTabPane.getSelectionModel().select(4);
+    resArea.setText("");
     resArea.setText(assemblyCode);
 
     // 自动导出汇编代码到同级目录 {文件名}.asm 文件
@@ -323,19 +312,34 @@ public class CompilerController {
       ClipboardContent content = new ClipboardContent();
       content.putString(assemblyCode);
       clipboard.setContent(content);
+      outInfos.info("汇编代码", "汇编代码已复制到粘贴板。");
     });
-    // showAlert(AlertType.INFORMATION, "汇编代码已复制到粘贴板。");
   }
 
   @FXML
   public void initialize() {
-    setupLineNumbers(codeArea, lineNumbersCode);
-    setupLineNumbers(resArea, lineNumbersRes);
+    setupLineNumbers(codeArea, lineNumbersCode, false);
+    setupLineNumbers(resArea, lineNumbersRes, true);
     codeArea.textProperty().addListener((obs, old, val) -> markModified());
     codeArea.setFocusTraversable(true);
     setupContextMenu(codeArea);
     setupEditMenu();
     setupFileMenu();
+
+    // 输出信息同步
+    outInfos = new OutInfo();
+    Debouncer debouncer1 = new Debouncer(300);
+    outs.addListener((obs, oldVal, newVal) -> {
+      if (outInfos.isEmpty()) {
+        debouncer1.debounceFX(() -> outPane.setExpanded(false));
+      } else {
+        debouncer1.debounceFX(() -> {
+          outArea.setText(newVal);
+          outPane.setExpanded(true);
+        });
+      }
+    });
+    outPane.setExpanded(false);
 
     // 添加光标位置监听器
     codeArea.caretPositionProperty().addListener((obs, oldPos, newPos) -> updatePosLabel(codeArea));
@@ -620,7 +624,7 @@ public class CompilerController {
     return codeArea;
   }
 
-  private void setupLineNumbers(TextArea contentArea, TextArea lineNumberArea) {
+  private void setupLineNumbers(TextArea contentArea, TextArea lineNumberArea, boolean isResArea) {
 
     // 阻止行号区域的滚动
     lineNumberArea.addEventFilter(javafx.scene.input.ScrollEvent.ANY, Event::consume);
@@ -632,23 +636,33 @@ public class CompilerController {
       }
     });
 
-    contentArea.textProperty().addListener((obs, old, val) -> updateLineNumbers(contentArea, lineNumberArea));
+    contentArea.textProperty()
+               .addListener((obs, old, val) -> updateLineNumbers(contentArea, lineNumberArea, isResArea));
     contentArea.scrollTopProperty().addListener((obs, old, val) -> lineNumberArea.setScrollTop(val.doubleValue()));
 
   }
 
-  private void updateLineNumbers(TextArea contentArea, TextArea lineNumberArea) {
+  private void updateLineNumbers(TextArea contentArea, TextArea lineNumberArea, boolean isResArea) {
     int lines = contentArea.getParagraphs().size();
     lineNumberArea.setText(String.join("\n", java.util.stream.IntStream.rangeClosed(1, lines)
                                                                        .mapToObj(String::valueOf)
                                                                        .toArray(String[]::new)));
     // 根据 lines 的位数调整行号区域的宽度
     int lineNumber = String.valueOf(lines).length();
-    if (lineNumber != lineWidth) {
-      double width = lineNumberArea.getPrefWidth();
-      width = lineNumber * (width / lineWidth);
-      lineWidth = lineNumber;
-      lineNumberArea.setPrefWidth(width);
+    if (isResArea) {
+      if (lineNumber != lineResWidth) {
+        double width = lineNumberArea.getPrefWidth();
+        width = lineNumber * (width / lineResWidth);
+        lineResWidth = lineNumber;
+        lineNumberArea.setPrefWidth(width);
+      }
+    } else {
+      if (lineNumber != lineSrcWidth) {
+        double width = lineNumberArea.getPrefWidth();
+        width = lineNumber * (width / lineSrcWidth);
+        lineSrcWidth = lineNumber;
+        lineNumberArea.setPrefWidth(width);
+      }
     }
   }
 
@@ -700,6 +714,7 @@ public class CompilerController {
     }
     FileChooser fileChooser = new FileChooser();
     fileChooser.setTitle("打开文件");
+    fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("star 文件", "*.star"));
     // 从首选项加载上次打开的目录
     Preferences prefs = Preferences.userNodeForPackage(CompilerController.class);
     String lastUsedDirectory = prefs.get("lastUsedOpenDirectory", System.getProperty("user.home"));
@@ -848,5 +863,25 @@ public class CompilerController {
     }
 
     return sb.toString();
+  }
+
+  // 关于菜单项
+  @FXML
+  private void handAbout(ActionEvent event) {
+    Alert aboutDialog = new Alert(Alert.AlertType.INFORMATION);
+    aboutDialog.setTitle("关于本项目");
+    aboutDialog.setHeaderText("编译原理课程设计");
+    aboutDialog.setContentText("本项目是一个用于学习编译原理的可视化工具，支持词法、语法、语义分析等功能。\n\n点击下方按钮访问项目主页获取更多信息。");
+    ButtonType linkButton = new ButtonType("访问项目主页");
+    aboutDialog.getButtonTypes().add(linkButton);
+    Optional<ButtonType> resultAbout = aboutDialog.showAndWait();
+    if (resultAbout.isPresent() && resultAbout.get() == linkButton) {
+      try {
+        Desktop.getDesktop().browse(new java.net.URI("https://github.com/Rising-Galaxy/CompilerClass"));
+      } catch (Exception e) {
+        // 处理异常
+        log.error("打开项目主页链接失败: {}", e.getMessage());
+      }
+    }
   }
 }

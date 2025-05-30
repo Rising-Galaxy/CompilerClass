@@ -4,19 +4,20 @@ import cn.study.compilerclass.model.ConstTableEntry;
 import cn.study.compilerclass.model.FunctionTableEntry;
 import cn.study.compilerclass.model.MiddleTableEntry;
 import cn.study.compilerclass.model.VariableTableEntry;
+import cn.study.compilerclass.utils.OutInfo;
 import java.util.ArrayList;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class AssemblyGenerator {
 
+  private final String src = "汇编代码";
   private final ArrayList<ConstTableEntry> constTable;
   private final ArrayList<VariableTableEntry> variableTable;
   private final ArrayList<FunctionTableEntry> functionTable;
   private final ArrayList<MiddleTableEntry> middleCode;
   private final StringBuilder asmCode;
-  private final StringBuilder errorMessage;
-  private boolean hasError;
+  private final OutInfo outInfos;
 
   /**
    * 构造函数
@@ -26,14 +27,13 @@ public class AssemblyGenerator {
    * @param functionTable 函数表
    * @param middleCode    中间代码
    */
-  public AssemblyGenerator(ArrayList<ConstTableEntry> constTable, ArrayList<VariableTableEntry> variableTable, ArrayList<FunctionTableEntry> functionTable, ArrayList<MiddleTableEntry> middleCode) {
+  public AssemblyGenerator(ArrayList<ConstTableEntry> constTable, ArrayList<VariableTableEntry> variableTable, ArrayList<FunctionTableEntry> functionTable, ArrayList<MiddleTableEntry> middleCode, OutInfo outInfos) {
     this.constTable = constTable;
     this.variableTable = variableTable;
     this.functionTable = functionTable;
     this.middleCode = middleCode;
     this.asmCode = new StringBuilder();
-    this.hasError = false;
-    this.errorMessage = new StringBuilder();
+    this.outInfos = outInfos;
   }
 
   /**
@@ -61,8 +61,7 @@ public class AssemblyGenerator {
 
       return asmCode.toString();
     } catch (myException e) {
-      hasError = true;
-      return errorMessage.toString();
+      return null;
     }
   }
 
@@ -104,8 +103,7 @@ public class AssemblyGenerator {
         _true_msg db 'True','$'
         _false_msg db 'False','$'
         next_row db 0dh,0ah,'$'
-        error db 'input error, please re-enter: ','$'
-        
+        error db 'input error, please re-enter',0dh,0ah,'> ','$'
         """);
     for (VariableTableEntry entry : variableTable) {
       // 变量名
@@ -568,7 +566,7 @@ public class AssemblyGenerator {
           return "0";
         }
         case "char" -> {
-          return "''";
+          return "' '";
         }
         case "bool" -> {
           return "0"; // 布尔类型默认为 false
@@ -592,22 +590,12 @@ public class AssemblyGenerator {
    */
   private String typeToAssembly(String type) throws myException {
     return switch (type) {
-      case "int" -> "dw";
-      case "char", "bool" -> "db";
+      case "int", "char", "bool" -> "dw";
       default -> {
         error(String.format("生成四元式时遇到了暂未支持的类型: %s", type));
         yield ""; // 不会执行到这里
       }
     };
-  }
-
-  /**
-   * 检查是否有错误
-   *
-   * @return 是否有错误
-   */
-  public boolean hasError() {
-    return hasError;
   }
 
   /**
@@ -617,8 +605,7 @@ public class AssemblyGenerator {
    * @throws myException 自定义异常
    */
   private void error(String message) throws myException {
-    errorMessage.append(message).append("\n");
-    log.error(message);
+    outInfos.error(src, message);
     throw new myException(message);
   }
 

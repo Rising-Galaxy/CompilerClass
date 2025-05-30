@@ -57,7 +57,7 @@
         </Menu>
         <Menu mnemonicParsing="false" text="帮助">
           <items>
-            <MenuItem mnemonicParsing="false" text="关于"/>
+            <MenuItem mnemonicParsing="false" onAction="#handAbout" text="关于"/>
           </items>
         </Menu>
       </menus>

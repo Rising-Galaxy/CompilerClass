@@ -672,7 +672,7 @@ public class Parser {
    */
   private boolean isType(Token token) {
     String value = token.getValue();
-    return value.equals("int") || value.equals("float") || value.equals("bool") || value.equals("void");
+    return value.equals("int") || value.equals("float") || value.equals("bool") || value.equals("void") || value.equals("char");
   }
 
   private Token currentToken() {
@@ -1088,7 +1088,7 @@ public class Parser {
           root.addChild(errorNode);
         } else {
           String identName = currentToken().getValue();
-          TokenTreeView idNode = new TokenTreeView(root, identName, NodeType.IDENTIFIER, "变量名", currentToken().getLine(), currentToken().getColumn());
+          TokenTreeView idNode = new TokenTreeView(root, identName, NodeType.IDENTIFIER, "变量/常量名", currentToken().getLine(), currentToken().getColumn());
           root.addChild(idNode);
           consume();
         }
@@ -1189,7 +1189,7 @@ public class Parser {
           }
         } else {
           // 普通变量引用
-          root = new TokenTreeView(identName, NodeType.IDENTIFIER, "变量名", currentToken().getLine(), currentToken().getColumn());
+          root = new TokenTreeView(identName, NodeType.IDENTIFIER, "变量/常量名", currentToken().getLine(), currentToken().getColumn());
 
           // 检查是否有后缀自增/自减
           if (!isEOF() && (currentToken().getType() == tokenManager.getType("++") || currentToken().getType() == tokenManager.getType("--"))) {
