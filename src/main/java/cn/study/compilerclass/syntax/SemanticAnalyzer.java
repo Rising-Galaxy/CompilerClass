@@ -345,31 +345,6 @@ public class SemanticAnalyzer {
     String functionName = children.getFirst().getValue();
     FunctionTableEntry functionEntry = findFunction(functionName);
     if (functionEntry == null) {
-      // if (functionName.equals("input")) {
-      //   if (!children.getLast().getChildren().isEmpty()) {
-      //     error(String.format("[r: %d, c: %d]-函数 '%s' 调用参数过多", functionCallNode.getRow(), functionCallNode.getCol(), functionName));
-      //     return errorResult;
-      //   }
-      //   String midVar = newTmp();
-      //   emit("call", "input", "", midVar);
-      //   processDelayedTasks();
-      //   return new Result(midVar, "int");
-      // } else if (functionName.equals("output")) {
-      //   if (children.getLast().getChildren().isEmpty()) {
-      //     error(String.format("[r: %d, c: %d]-函数 '%s' 调用缺少参数", functionCallNode.getRow(), functionCallNode.getCol(), functionName));
-      //     return errorResult;
-      //   } else if (children.getLast().getChildren().size() > 1) {
-      //     error(String.format("[r: %d, c: %d]-函数 '%s' 调用参数过多", functionCallNode.getRow(), functionCallNode.getCol(), functionName));
-      //     return errorResult;
-      //   }
-      //   TokenTreeView paramNode = children.getLast().getChildren().getFirst();
-      //   Result result = analyzeExpression(paramNode);
-      //   emit("para", result.getValue(), "", "");
-      //   String midVar = newTmp();
-      //   emit("call", "output", "", midVar);
-      //   processDelayedTasks();
-      //   return new Result(midVar, "void");
-      // }
       error(String.format("[r: %d, c: %d]-函数 '%s' 未定义", functionCallNode.getRow(), functionCallNode.getCol(), functionName));
       return errorResult;
     }
@@ -433,13 +408,40 @@ public class SemanticAnalyzer {
     usedVariables.add(varEntry);
 
     // 分析右侧表达式并进行类型检查
-    Result rightValueType = analyzeExpression(rightOperandNode);
-    if (!varEntry.getType().equals(rightValueType.getType())) {
-      error(String.format("[r: %d, c: %d]-类型不匹配：无法将类型 '%s' 赋值给类型为 '%s' 的变量 '%s'", rightOperandNode.getRow(), rightOperandNode.getCol(), rightValueType, varEntry.getType(), variableName));
+    Result result = analyzeExpression(rightOperandNode);
+    if (!varEntry.getType().equals(result.getType())) {
+      error(String.format("[r: %d, c: %d]-类型不匹配：无法将类型 '%s' 赋值给类型为 '%s' 的变量 '%s'", rightOperandNode.getRow(), rightOperandNode.getCol(), result, varEntry.getType(), variableName));
     }
 
     // 生成四元式
-    emit("=", rightValueType.getValue(), "", varEntry.getName());
+    // 复合赋值语句
+    String operator = assignmentNode.getChildren().get(1).getValue();
+    String midVar = newTmp();
+    switch (operator) {
+      case "+=" -> {
+        emit("+", varEntry.getName(), result.getValue(), midVar);
+      }
+      case "-=" -> {
+        emit("-", varEntry.getName(), result.getValue(), midVar);
+      }
+      case "*=" -> {
+        emit("*", varEntry.getName(), result.getValue(), midVar);
+      }
+      case "/=" -> {
+        emit("/", varEntry.getName(), result.getValue(), midVar);
+      }
+      case "%=" -> {
+        emit("%", varEntry.getName(), result.getValue(), midVar);
+      }
+      default -> {
+        if (!operator.equals("=")) {
+          error(String.format("[r: %d, c: %d]-不支持的赋值操作符 '%s'", assignmentNode.getRow(), assignmentNode.getCol(), operator));
+          return;
+        }
+        midVar = result.getValue();
+      }
+    }
+    emit("=", midVar, "", varEntry.getName());
     processDelayedTasks();
   }
 
@@ -471,6 +473,7 @@ public class SemanticAnalyzer {
         } else if (symbolType == SymbolType.CONST) {
           ConstTableEntry constEntry = findConst(identifierName);
           if (constEntry != null) {
+            usedConstants.add(constEntry);
             yield new Result(constEntry.getName(), constEntry.getType());
           }
           yield errorResult;
@@ -479,11 +482,6 @@ public class SemanticAnalyzer {
           if (varEntry != null) {
             usedVariables.add(varEntry);
             yield new Result(varEntry.getName(), varEntry.getType());
-          }
-          ConstTableEntry constEntry = findConst(identifierName);
-          if (constEntry != null) {
-            usedConstants.add(constEntry);
-            yield new Result(constEntry.getName(), constEntry.getType());
           }
           yield errorResult;
         }
@@ -559,19 +557,52 @@ public class SemanticAnalyzer {
     return result;
   }
 
-  // 通用检测两侧类型匹配，并且是否为指定类型
+  // 通用检测两侧类型匹配，并且是否为指定类型 - 严格匹配
   private boolean checkTypeMatch(Result leftRes, Result rightRes, TokenTreeView node, String... types) {
     if (!(leftRes.getType().equals(rightRes.getType()))) {
       error(String.format("[r: %d, c: %d]-表达式类型不匹配，左侧为 %s，右侧为 %s", node.getRow(), node.getCol(), leftRes.getType(), rightRes.getType()));
       return false;
     }
+    boolean match = false;
     for (String type : types) {
-      if (!leftRes.getType().equals(type)) {
-        error(String.format("[r: %d, c: %d]-表达式类型不匹配，期望为 %s，实际为 %s", node.getRow(), node.getCol(), type, leftRes.getType()));
-        return false;
+      if (leftRes.getType().equals(type)) {
+        match = true;
+        break;
       }
     }
+    // 期望类型转列表
+    List<String> expectedTypes = List.of(types);
+    if (!match) {
+      error(String.format("[r: %d, c: %d]-表达式类型不匹配，期望为 %s，实际为 %s", node.getRow(), node.getCol(), expectedTypes, leftRes.getType()));
+      return false;
+    }
     return true;
+  }
+
+  // 通用检测两侧类型匹配，并且是否为指定类型
+  private boolean checkTypeMatchEase(Result leftRes, Result rightRes, TokenTreeView node, String... types) {
+    boolean leftMatch = false;
+    boolean rightMatch = false;
+    boolean resultMatch = true;
+    for (String type : types) {
+      if (!leftMatch && leftRes.getType().equals(type)) {
+        leftMatch = true;
+      }
+      if (!rightMatch && rightRes.getType().equals(type)) {
+        rightMatch = true;
+      }
+    }
+    // 期望类型转列表
+    List<String> expectedTypes = List.of(types);
+    if (!leftMatch) {
+      error(String.format("[r: %d, c: %d]-左表达式类型不匹配，期望为 %s，实际为 %s", node.getRow(), node.getCol(), expectedTypes, leftRes.getType()));
+      resultMatch = false;
+    }
+    if (!rightMatch) {
+      error(String.format("[r: %d, c: %d]-右表达式类型不匹配，期望为 %s，实际为 %s", node.getRow(), node.getCol(), expectedTypes, rightRes.getType()));
+      resultMatch = false;
+    }
+    return resultMatch;
   }
 
   // 分析关系表达式
@@ -579,14 +610,19 @@ public class SemanticAnalyzer {
     // 只能是整数或浮点数与整数或浮点数的关系表达式
     Result leftRes = analyzeExpression(relationalNode.getChildren().getFirst());
     Result rightRes = analyzeExpression(relationalNode.getChildren().getLast());
-    if (!(leftRes.getType().equals(rightRes.getType()) && (leftRes.getType().equals("int") || leftRes.getType()
-                                                                                                     .equals("float")))) {
-      error(String.format("[r: %d, c: %d]-关系表达式类型不匹配，左侧为 %s，右侧为 %s", relationalNode.getRow(), relationalNode.getCol(), leftRes.getType(), rightRes.getType()));
-      return errorResult;
+    // 检查类型是否匹配
+    String op = relationalNode.getChildren().get(1).getValue();
+    if (op.equals("==") || op.equals("!=")) {
+      // 等于和不等于关系运算可以是整数、浮点数、字符或布尔类型
+      if (!checkTypeMatch(leftRes, rightRes, relationalNode, "int", "float", "char", "bool")) {
+        return errorResult;
+      }
+    } else {
+      // 其他关系运算只能是整数或浮点数
+      if (!checkTypeMatchEase(leftRes, rightRes, relationalNode, "int", "float")) {
+        return errorResult;
+      }
     }
-    // Result result = new Result(newTmp(), "bool", midId, midId + 1);
-    // emitDelayed("j" + relationalNode.getChildren().get(1).getValue(), leftRes.getValue(), rightRes.getValue(), "0");
-    // emitDelayed("j", "", "", "0");
     Result result = new Result(newTmp(), "bool");
     emit(relationalNode.getChildren().get(1).getValue(), leftRes.getValue(), rightRes.getValue(), result.getValue());
     processDelayedTasks();
@@ -738,15 +774,14 @@ public class SemanticAnalyzer {
   private void enterScope() {
     scopeStack.push(nextScopeId);
     declaredVariablesInScope.clear(); // 进入新作用域时，清空当前作用域的声明记录
-    info("进入作用域: " + getCurrentScopePath() + " (ID: " + nextScopeId + ")");
+    // info("进入作用域: " + getCurrentScopePath() + " (ID: " + nextScopeId + ")");
     nextScopeId++;
   }
 
   private void exitScope() {
     if (!scopeStack.isEmpty()) {
-      Integer exitedScopeId = scopeStack.pop();
       declaredVariablesInScope.clear(); // 退出作用域时，清空，尽管通常在enter时处理
-      info("退出作用域: " + getCurrentScopePath() + " (原ID: " + exitedScopeId + ")");
+      // info("退出作用域: " + getCurrentScopePath() + " (原ID: " + scopeStack.pop() + ")");
     } else {
       error("尝试退出作用域失败：作用域栈为空。");
     }
@@ -901,17 +936,6 @@ public class SemanticAnalyzer {
 
     private String value;
     private String type;
-    private int CHAIN;
-    // private int TC;
-    // private int FC;
-
-    public Result(String value, String type) {
-      this.value = value;
-      this.type = type;
-      this.CHAIN = 0;
-      // this.TC = 0;
-      // this.FC = 0;
-    }
   }
 }
 

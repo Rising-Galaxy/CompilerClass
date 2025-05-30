@@ -11,6 +11,7 @@ module cn.study.compilerclass {
   requires org.apache.commons.lang3;
   requires org.apache.commons.text;
   requires java.prefs;
+  requires java.desktop;
 
   opens cn.study.compilerclass.controller to javafx.fxml;
   opens cn.study.compilerclass.model to javafx.base;

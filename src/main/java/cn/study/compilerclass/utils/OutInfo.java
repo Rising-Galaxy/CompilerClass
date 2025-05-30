@@ -1,6 +1,7 @@
 package cn.study.compilerclass.utils;
 
 import lombok.extern.slf4j.Slf4j;
+import static cn.study.compilerclass.controller.CompilerController.outs;
 
 @Slf4j
 public class OutInfo {
@@ -23,6 +24,7 @@ public class OutInfo {
 
   private void add(String src, OutType outType, String msg) {
     outInfos.append(String.format("[%s]-[%s] %s%n", src, outType, msg));
+    outs.set(toString());
   }
 
   public void error(String src, String msg) {
@@ -49,6 +51,8 @@ public class OutInfo {
 
   public void clear() {
     outInfos.delete(0, outInfos.length());
+    hasError = false;
+    outs.set("");
   }
 
   public String toString() {

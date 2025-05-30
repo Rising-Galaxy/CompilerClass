@@ -1,9 +1,11 @@
 package cn.study.compilerclass;
 
+import java.util.Objects;
 import javafx.application.Application;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
+import javafx.scene.image.Image;
 import javafx.scene.text.Font;
 import javafx.stage.Stage;
 import java.io.IOException;
@@ -22,6 +24,9 @@ public class CompilerApp extends Application {
     String style = CompilerApp.class.getResource("css/style.css").toExternalForm();
     Application.setUserAgentStylesheet(dracula);
     scene.getStylesheets().add(style);
+
+    // 设置窗口图标
+    stage.getIcons().add(new Image(Objects.requireNonNull(getClass().getResourceAsStream("/cn/study/compilerclass/pic/myLogo.png"))));
     stage.setTitle("景明编译器");
     stage.setScene(scene);
     stage.setMaximized(true);
